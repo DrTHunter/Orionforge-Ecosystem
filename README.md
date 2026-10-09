@@ -175,4 +175,4 @@ Agents can call tools, search the web, and (if you enable them) send email and r
 
 ## License
 
-See [LICENSE](LICENSE) and [LICENSE.md](LICENSE.md).
+Dual-licensed, the same as [SoulScript-Engine](https://github.com/DrTHunter/SoulScript-Engine): use it under the **GNU AGPL v3** ([LICENSE](LICENSE)) **or** the commercial terms in [LICENSE.md](LICENSE.md) (free until $100k lifetime gross revenue, then 5% of net). You only need one.
