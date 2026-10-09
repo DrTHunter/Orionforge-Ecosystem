@@ -1,6 +1,4 @@
-﻿# src/tools/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/tools/
 
 Tool implementations for the OrionForge agent runtime.
 

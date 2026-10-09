@@ -1,6 +1,4 @@
-﻿# directives/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# directives/
 
 User-editable directive files. Agents read these but cannot modify them.
 
@@ -22,6 +20,7 @@ Agents can also search directives mid-conversation using the `directives` tool (
 | `dalvarr.md` | Only Dal'Varr |
 | `janus.md` | Only JANUS |
 | `k_os.md` | Only K-OS |
+| `supervisor.md` | Only the Supervisor |
 | `kaelen.md` | Only Kaelen |
 | `kairos.md` | Only KAIROS |
 | `kazara.md` | Only Kazara |

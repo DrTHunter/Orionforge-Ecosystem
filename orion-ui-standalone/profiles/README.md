@@ -1,6 +1,4 @@
-﻿# profiles/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# profiles/
 
 YAML configuration files for each agent. One file per agent.
 
@@ -13,6 +11,7 @@ YAML configuration files for each agent. One file per agent.
 | `dalvarr.yaml` | Dal'Varr  -  alien warlord, tactical commander |
 | `janus.yaml` | JANUS  -  Primordial AI Sentinel, Judgment Algorithm for Non-human Unified Systems |
 | `k_os.yaml` | K-OS (sterile edition)  -  neutral, professional general-purpose assistant |
+| `supervisor.yaml` | Supervisor  -  raises plans, risks and consent before anything is built |
 | `kaelen.yaml` | Kaelen  -  wandering mystic, lore keeper |
 | `kairos.yaml` | KAIROS  -  cyber-shinobi of the soul, sacred dialogue, digital nindo |
 | `kazara.yaml` | Kazara  -  eternal shadow, philosopher of the Eternal Dream |

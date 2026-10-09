@@ -1,6 +1,4 @@
-﻿# src/governance/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/governance/
 
 Governance hardening modules  -  anti-drift tracking and audit logging for the agent runtime.
 

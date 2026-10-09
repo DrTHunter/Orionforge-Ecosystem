@@ -1,6 +1,4 @@
-﻿# src/observability/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/observability/
 
 Token accounting and USD cost metering for LLM calls.
 

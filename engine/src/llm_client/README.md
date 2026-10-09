@@ -1,6 +1,4 @@
-﻿# src/llm_client/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/llm_client/
 
 LLM provider abstraction layer. Supports multiple providers through a common interface.
 

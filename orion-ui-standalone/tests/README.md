@@ -1,8 +1,16 @@
-﻿# tests/
-
-> Status: reviewed and refreshed on 2026-09-30.
+# tests/
 
 Comprehensive test suite for the OrionForge agent runtime. **295 test functions, ~4,350 assertions** across 12 test files.
+
+Run from `orion-ui-standalone/`:
+
+```bash
+python -X utf8 -m tests.test_agi_loop      # AGI loop (~1 min)
+python -X utf8 -m tests.test_torture       # the big one (several minutes, ~3.5k checks)
+python -X utf8 tests/run_all.py            # everything
+```
+
+In this local edition, the checks for hosted-deploy files (`boot.sh`, `Dockerfile.fly`) are skipped because those files aren't shipped. Counts below are approximate.
 
 ## Test Files
 

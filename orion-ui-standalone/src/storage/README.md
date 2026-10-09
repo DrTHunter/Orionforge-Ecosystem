@@ -1,6 +1,4 @@
-﻿# Storage  -  Note Collection & User Notes
-
-> Status: reviewed and refreshed on 2026-05-28.
+# Storage  -  Note Collection & User Notes
 
 Handles loading, stripping, and injecting user-authored notes into agent context.
 

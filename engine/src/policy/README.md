@@ -1,6 +1,4 @@
-﻿# src/policy/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/policy/
 
 Boundary enforcement, capability gating, and risk logging.
 

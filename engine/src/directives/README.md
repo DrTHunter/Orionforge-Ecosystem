@@ -1,6 +1,4 @@
-﻿# src/directives/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/directives/
 
 Parses, scores, and retrieves sections from user-authored directive markdown files.
 

@@ -262,7 +262,7 @@ and paste the auto-filled snippet into your client, e.g. Claude Code:
 
 ```bash
 claude mcp add --transport http orionforge-hosted \
-  https://soulscript.orionforge.chat/mcp \
+  https://<your-server>/mcp \
   --header "Authorization: Bearer <YOUR_TOKEN>"
 ```
 

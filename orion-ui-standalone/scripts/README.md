@@ -1,6 +1,4 @@
-﻿# scripts/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# scripts/
 
 Utility scripts for data seeding and maintenance. Run from the project root.
 
@@ -105,7 +103,7 @@ The bridge supports three auth modes via `config/vscode_bridge.json` (`auth.mode
 | Mode | Use case | How |
 |------|----------|-----|
 | `disabled` | Local app with `auth_enabled: false` | No credentials sent |
-| `bridge_key` | Recommended for remote/Fly | Static key in `X-Bridge-Key` header |
+| `bridge_key` | Recommended for a remote/hosted server | Static key in `X-Bridge-Key` header |
 | `bearer` | One-off testing | Short-lived Supabase JWT (expires) |
 
 ### Bridge Key Setup (Recommended)
@@ -120,15 +118,9 @@ mechanism is inert and normal Supabase login is unchanged.
 python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-2. Set the key on the server. For Fly:
-
-```powershell
-fly secrets set ORION_BRIDGE_API_KEY="<generated_key>" -a orionforge-engine
-fly deploy
-```
-
-   For a local server, set `ORION_BRIDGE_API_KEY` in the app environment, or
-   put it in `config/auth.json` under `bridge_api_key`.
+2. Set the key on the server: put `ORION_BRIDGE_API_KEY` in the app's
+   environment (or `.env`), or in `config/auth.json` under `bridge_api_key`.
+   On a hosted server, set it as that host's secret and restart the app.
 
 3. Point the bridge at the same key (in your terminal, not committed):
 
@@ -148,5 +140,5 @@ uses an isolated `__bridge__` data space.
 #### Security notes
 
 - Treat the bridge key like a password; anyone with it has full owner access.
-- The key is compared in constant time and only works over the server's HTTPS endpoint on Fly.
-- Remove it any time with `fly secrets unset ORION_BRIDGE_API_KEY` and redeploy.
+- The key is compared in constant time. Only send it to a server over HTTPS (or to `127.0.0.1`).
+- Remove it any time by unsetting `ORION_BRIDGE_API_KEY` and restarting the app.

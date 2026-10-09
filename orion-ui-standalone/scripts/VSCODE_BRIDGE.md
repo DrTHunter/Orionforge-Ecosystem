@@ -45,8 +45,8 @@ scripts/orion_vscode_bridge.py   ──HTTP──►   {base_url}/api/chat/send
 - **VS Code** with MCP support — GitHub Copilot **agent mode**, or an MCP-capable
   extension (Continue, Cline, etc.).
 - **Python 3.10+** and the `requests` package: `pip install requests`.
-- **An Orion Forge instance to point at** — the hosted platform
-  (`https://orionforge-engine.fly.dev`) or a local app (`http://127.0.0.1:8989`).
+- **An Orion Forge instance to point at** — usually your local app
+  (`http://127.0.0.1:8989`), or a server you host yourself.
 - **Credentials** for that instance if it requires auth (see *Per-user setup*).
 
 ---
@@ -73,7 +73,7 @@ from the Command Palette for a user-level install):
       "command": "C:/path/to/python.exe",
       "args": ["C:/path/to/orion-ui-standalone/scripts/orion_vscode_bridge.py"],
       "env": {
-        "ORION_VSCODE_BRIDGE_BASE_URL": "https://orionforge-engine.fly.dev",
+        "ORION_VSCODE_BRIDGE_BASE_URL": "http://127.0.0.1:8989",
         "ORION_VSCODE_BRIDGE_AUTH_MODE": "bearer",
         "ORION_VSCODE_BRIDGE_BEARER_TOKEN": "${input:orion_token}",
         "ORION_VSCODE_BRIDGE_DEFAULT_AGENT": "supervisor",
@@ -144,9 +144,8 @@ login is unchanged.
    ```bash
    python -c "import secrets; print(secrets.token_urlsafe(48))"
    ```
-2. Set it on the server: `ORION_BRIDGE_API_KEY=<key>` (Fly:
-   `fly secrets set ORION_BRIDGE_API_KEY="<key>" -a orionforge-engine && fly deploy`;
-   local: env var or `config/auth.json` → `bridge_api_key`). To share your browser
+2. Set it on the server: `ORION_BRIDGE_API_KEY=<key>` as an env var (or
+   `config/auth.json` → `bridge_api_key`), then restart the app. To share your browser
    account's data, also set `ORION_BRIDGE_USER_ID=<your Supabase uid>` (or
    `auth.json` → `bridge_user_id`); otherwise calls land in an isolated
    `__bridge__` space.
@@ -154,8 +153,8 @@ login is unchanged.
    `ORION_VSCODE_BRIDGE_KEY=<same key>`.
 
 **Security:** treat the key like a password (full account access); it's compared
-in constant time and only works over the server's HTTPS endpoint. Remove it with
-`fly secrets unset ORION_BRIDGE_API_KEY` + redeploy.
+in constant time; only send it over HTTPS or to `127.0.0.1`. Remove it by unsetting
+`ORION_BRIDGE_API_KEY` and restarting the app.
 
 ### Per-user keys at scale (roadmap)
 
@@ -190,7 +189,7 @@ Example `config/vscode_bridge.json`:
 
 ```json
 {
-  "base_url": "https://orionforge-engine.fly.dev",
+  "base_url": "http://127.0.0.1:8989",
   "default_agent": "supervisor",
   "allowed_agents": ["supervisor", "k_os"],
   "default_model_override": "deepseek-reasoner",

@@ -1,14 +1,14 @@
-﻿# web/
+# web/
 
-> Status: reviewed and refreshed on 2026-05-28.
+Orion Forge  -  the web dashboard for the agent runtime. A browser-based control panel built with FastAPI, Jinja2, and vanilla JavaScript.
 
-Orion Forge  -  the web dashboard for the agent runtime. A full-featured browser-based control panel built with FastAPI, Jinja2, and vanilla JavaScript. Includes Supabase OAuth authentication, Stripe subscription billing, and a credit-based monetization system.
+> **Local edition:** with no `config/auth.json`, the app runs in single-user mode with no login. Supabase auth, Stripe billing, credits, the Store and Google Analytics are only active on hosted multi-user deployments that configure them (analytics needs `GA_MEASUREMENT_ID`). The sections below on those features describe that optional mode.
 
 ## Quick Start
 
 ```bash
 cd orion-ui-standalone
-python -m uvicorn web.app:app --host 0.0.0.0 --port 8989 --reload
+python -m uvicorn web.app:app --host 127.0.0.1 --port 8989 --reload
 # Open http://localhost:8989
 ```
 
@@ -267,10 +267,12 @@ On startup, the app rebuilds the NotesFAISS index and initializes a lazy `FAISSM
 
 ## External Service Dependencies
 
-| Service | Purpose | Local Default | Production (Fly.io) |
-|---------|---------|---------------|---------------------|
-| SearXNG | Web search for `web_search` tool | `http://localhost:3000` | `SEARXNG_URL` env var  ->  `.flycast` |
-| openedai-speech | Text-to-speech | `http://localhost:5050` | `TTS_URL` env var  ->  `.flycast` |
-| faster-whisper | Speech-to-text | `http://localhost:8060` | `WHISPER_URL` env var  ->  `.flycast` |
+| Service | Purpose | Local Default | Override |
+|---------|---------|---------------|----------|
+| SearXNG | Web search for `web_search` tool | `http://localhost:3000` | `SEARXNG_URL` env var |
+| openedai-speech | Text-to-speech | `http://localhost:5050` | `TTS_URL` env var |
+| faster-whisper | Speech-to-text | `http://localhost:8060` | `WHISPER_URL` env var |
+
+All three are optional; Dockerfiles are in `../services/`.
 
 Environment variables (`TTS_URL`, `WHISPER_URL`, `SEARXNG_URL`) take priority over `connections.json` entries.

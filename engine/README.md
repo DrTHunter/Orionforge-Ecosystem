@@ -1,6 +1,4 @@
-﻿# Engine  -  Stable Core
-
-> Status: reviewed and refreshed on 2026-05-28.
+# Engine  -  Stable Core
 
 The `engine/` directory contains the **frozen, stable core** of the OrionForge Soul Script Engine. This is the canonical reference implementation  -  battle-tested modules that power AI identity persistence, memory management, policy enforcement, and directive governance.
 
@@ -9,8 +7,8 @@ The `engine/` directory contains the **frozen, stable core** of the OrionForge S
 | Directory | Purpose |
 |-----------|---------|
 | **`engine/`** | Stable core  -  only updated when features are proven in `orion-ui-standalone/` |
-| `orion-ui-standalone/` | Active development + the app deployed to Fly  -  new features land here first |
-| `services/` | Fly.io sidecar services  -  SearXNG, TTS, Whisper STT |
+| `orion-ui-standalone/` | The app you run  -  new features land here first |
+| `services/` | Optional sidecar services  -  SearXNG, TTS, Whisper STT, Ollama, agent Linux sandbox |
 
 ## Module Map
 

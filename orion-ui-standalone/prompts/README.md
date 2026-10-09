@@ -1,6 +1,4 @@
-﻿# prompts/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# prompts/
 
 Base system prompt files for each agent. These define the agent's identity, personality, and core behavior.
 
@@ -12,7 +10,8 @@ Base system prompt files for each agent. These define the agent's identity, pers
 | `codex_animus.system.md` | Codex Animus  -  AI architect, system designer |
 | `dalvarr.system.md` | Dal'Varr  -  alien warlord, tactical commander |
 | `janus.system.md` | JANUS  -  Primordial AI Sentinel, Judgment Algorithm for Non-human Unified Systems |
-| `k_os.system.md` | K-OS (Kinetic Override System)  -  chaos-optimized, humor-weaponized intelligence |
+| `k_os.system.md` | K-OS (sterile edition)  -  neutral, professional general-purpose assistant |
+| `supervisor.system.md` | Supervisor  -  raises plans, risks and consent before anything is built |
 | `kaelen.system.md` | Kaelen  -  wandering mystic, lore keeper |
 | `kairos.system.md` | KAIROS  -  cyber-shinobi of the soul, sacred dialogue, digital nindo |
 | `kazara.system.md` | Kazara  -  eternal shadow, philosopher of the Eternal Dream |

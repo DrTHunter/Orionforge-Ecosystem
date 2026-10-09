@@ -1,6 +1,4 @@
-﻿# config/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# config/
 
 Configuration files for the runtime and web dashboard. 17 config files (11 core + saved profiles & router presets) controlling connections, billing, routing, identity, and UI behavior.
 
@@ -13,7 +11,7 @@ Configuration files for the runtime and web dashboard. 17 config files (11 core 
 | `connections.json` | LLM provider connections for the 🧩 Platform Models chat mode. Also stores sidecar service URLs as fallback when env vars are not set. Managed via Dashboard  ->  Settings. |
 | `auth.json` | Authentication configuration. Required for login. |
 | `settings.json` | UI settings  -  timezone, chat background, agent avatars, per-agent display/voice/model config. Auto-created on first save. |
-| `stripe_state.json` | Credit balances and billing state. On Fly.io, persisted to `/persist/stripe_state.json` via a 1 GB volume so credit data survives deploys. Falls back to `config/stripe_state.json` locally. |
+| `stripe_state.json` | Credit balances and billing state for hosted multi-user deployments with Stripe enabled. Not used in local mode. Git-ignored. |
 | `about.json` | About wiki custom notes content (editable from the web UI at `/about`) |
 | `agi_loop.json` | AGI loop configuration  -  agent, connection + model (no router), wall-time cadence, daily token budget/cost cap, per-tick limits, room capacity, guards |
 | `identity_profile.json` | FAISS identity indexing profile  -  chunk size (400 tokens), overlap (80), retrieval top_k, merge strategy for soul script indexing |

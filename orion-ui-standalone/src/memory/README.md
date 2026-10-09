@@ -1,6 +1,4 @@
-﻿# src/memory/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/memory/
 
 The Memory System  -  FAISS semantic search backed by vault.jsonl storage, plus a separate NotesFAISS index for knowledge notes.
 
@@ -35,7 +33,7 @@ The Memory System  -  FAISS semantic search backed by vault.jsonl storage, plus 
 - Supports filtered search by `note_ids`
 
 ### Technical Details
-- **Embedding model:** `all-mpnet-base-v2` (768-dimensional)
+- **Embedding model:** `all-MiniLM-L6-v2` (384-dimensional)
 - **Index type:** `IndexFlatIP` (cosine similarity)
 - **Dependencies:** `faiss-cpu>=1.7.4`, `sentence-transformers>=2.2.0`
 
@@ -175,7 +173,7 @@ The vault uses `faiss.IndexFlatIP` (flat inner-product / cosine similarity). Thi
 - **Zero index-build overhead**  -  vectors are just appended to a flat matrix
 - **Trade-off:** Linear scan means search time grows with vault size. For vaults under ~50K memories this is negligible.
 
-### Benchmark Estimates (768-dim, all-mpnet-base-v2)
+### Benchmark Estimates (originally measured with 768-dim all-mpnet-base-v2; the current 384-dim all-MiniLM-L6-v2 is smaller and faster)
 
 | Operation | @ 1K memories | @ 5K memories | @ 10K memories | @ 25K memories |
 |-----------|---------------|---------------|----------------|----------------|
@@ -198,7 +196,7 @@ Each memory produces one 768-dimensional float32 vector (3,072 bytes) plus a JSO
 | 10,000 | ~30 MB | ~30 MB | ~4 MB | ~34 MB |
 | 25,000 | ~75 MB | ~75 MB | ~10 MB | ~85 MB |
 
-The SentenceTransformer model (`all-mpnet-base-v2`) adds ~420 MB to RAM on first load and is shared across vault + notes indexes.
+The SentenceTransformer model (`all-MiniLM-L6-v2`) adds ~90 MB to RAM on first load and is shared across vault + notes indexes.
 
 ### Hard Limits (Enforced  -  Cannot Be Bypassed)
 

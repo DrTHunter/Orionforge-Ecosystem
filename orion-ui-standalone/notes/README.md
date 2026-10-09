@@ -1,6 +1,4 @@
-﻿# notes/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# notes/
 
 User-editable note files. Contents are injected **statically** into the agent's system prompt at every session  -  no filtering, no relevance scoring. Use these for short, always-relevant context.
 
@@ -21,6 +19,8 @@ Rich notes created via the web dashboard's Knowledge page with formatting, secti
 | File | Who Sees It |
 |------|-------------|
 | `shared.md` | All agents |
+| `k_os.md` | Only K-OS |
+| `supervisor.md` | Only the Supervisor |
 | `codex_animus.md` | Only Codex Animus |
 
 > **Note:** Agent Store agents (Aristotle, JANUS, K-OS, Dal'Varr, Kaelen, KAIROS, Lux Umbra, Marcus Aurelius, M.A.R.I.S.-12, Kazara, Obsidian, Orion, Seraphine) use Soul Scripts and Knowledge Notes instead of these markdown files. Create `<agent>.md` here if you want always-on markdown notes for them.

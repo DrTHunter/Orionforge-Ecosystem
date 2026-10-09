@@ -1,6 +1,6 @@
 # FAISS Vector Memory System
 
-**Status:** ✅ Operational | **Indexed:** 5 memories (~75KB) | **Model:** all-mpnet-base-v2 (768-dim)
+**Model:** all-MiniLM-L6-v2 (384-dim)
 
 ## Overview
 
@@ -33,7 +33,7 @@ Sources:
 Total characters:    74,625
 Avg per memory:      14,925 chars
 
-Embedding:           all-mpnet-base-v2
+Embedding:           all-MiniLM-L6-v2
 Dimension:           768
 Index type:          FLATIP (cosine similarity)
 ```
@@ -169,7 +169,7 @@ memory.save(name="default")
 
 ## Technical Details
 
-- **Embedding Model:** sentence-transformers/all-mpnet-base-v2
+- **Embedding Model:** sentence-transformers/all-MiniLM-L6-v2
 - **Vector Dimension:** 768
 - **Similarity Metric:** Cosine (inner product with L2 normalization)
 - **Index Type:** FAISS IndexFlatIP (exact search, no compression)

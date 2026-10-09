@@ -1,6 +1,4 @@
-﻿# src/
-
-> Status: reviewed and refreshed on 2026-05-28.
+# src/
 
 Core source code for the agent runtime. Contains all Python modules organized into subsystems.
 
