@@ -48,7 +48,7 @@ Keys you add in the UI are stored in `orion-ui-standalone/config/connections.jso
 
 **4. Talk to someone**
 
-Open **Chat** and pick an agent. Start with **Supervisor** — see below.
+Open **Chat** and pick an agent. Start with **Supervisor** — see below. (Until you add a model connection, chat will tell you none is configured.)
 
 ### Docker instead
 
@@ -74,7 +74,8 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989
 ## Local-first by design
 
 - **No login.** With no auth config present, the app runs in single-user mode. Everything is stored under `orion-ui-standalone/data/` and `orion-ui-standalone/config/`.
-- **No telemetry, no billing.** Stripe, Supabase and the hosted admin panel are optional extras for people who deploy a multi-user server. They are off unless you configure them.
+- **No analytics, no billing.** Google Analytics and the Reddit pixel are fully off unless you set `GA_MEASUREMENT_ID` / `REDDIT_PIXEL_ID` yourself. Stripe and Supabase are optional extras for people who deploy a multi-user server, and are off unless you configure them.
+- **One caveat on "nothing leaves your machine":** the web UI loads a few front-end libraries (e.g. `marked`, Tailwind) from public CDNs such as jsdelivr, so your browser contacts those hosts. Your chats, memory and keys are not sent to them. Model calls go only to the connection you configure — with Ollama, nowhere.
 - **Bound to localhost.** The launch scripts listen on `127.0.0.1` only. If you expose it to a network, put authentication in front of it first.
 - **Your data is yours.** Delete `orion-ui-standalone/data/` to start fresh. Back it up by copying it.
 
@@ -88,7 +89,7 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989
 | **K-OS (sterile edition)** | A neutral, professional, general-purpose assistant. The clean template to copy when you write your own agent. |
 | Aristotle, Codex Animus, Dal'Varr, Janus, Kaelen, KAIROS, Kazara, Lux Umbra, M.A.R.I.S.-12, Marcus Aurelius, Obsidian, Seraphine | Example characters with full Soul Scripts, showing different voices and depths. |
 
-**Supervisor first.** The ecosystem is designed so that building starts with a conversation, not a command. The Supervisor's job is to slow down just enough to ask: *What are we about to do? What could go wrong? Who is affected, and do they agree?* Treat each agent's stated wants, limits and needs as real input — if an agent declines or sets a boundary, it is recorded and passed on, not routed around. See `orion-ui-standalone/prompts/supervisor.system.md` and `directives/supervisor.md`.
+**Supervisor first.** The Supervisor is a *behavioral* agent: a system prompt and Soul Script that make it slow down and ask before work starts. It is **not** an enforcement layer — nothing in the code blocks a tool call until it approves, and a model can ignore its prompt. Use it as a collaborator and a checklist, not a safety lock. Its job is to ask: *What are we about to do? What could go wrong? Who is affected, and do they agree?* Treat each agent's stated wants, limits and needs as real input — if an agent declines or sets a boundary, it is recorded and passed on, not routed around. See `orion-ui-standalone/prompts/supervisor.system.md` and `directives/supervisor.md`.
 
 ### Make your own
 
@@ -120,7 +121,7 @@ Agents can save memories during conversation with `[MEMORY_SAVE: ...]` tags.
 
 ## The AGI Loop (optional)
 
-A continuously running inner world for one agent: it senses time and its own state, predicts, attends, thinks, acts with loop-only tools, and rests. The Supervisor and K-OS each have a loop (`/agi-loop`, `/agi-loop?loop=k_os`), with daily token and cost caps in `config/agi_loop.json` (default 200k tokens / $2 per day). Loops never start by themselves — you start them. A loop may optionally be given its own Linux sandbox (`services/agent-linux`); that is off unless you deploy it and set `SUPERVISOR_LINUX_URL`/`SUPERVISOR_LINUX_TOKEN`.
+A continuously running inner world for one agent: it senses time and its own state, predicts, attends, thinks, acts with loop-only tools, and rests. The Supervisor and K-OS each have a loop (`/agi-loop`, `/agi-loop?loop=k_os`), with daily token and cost caps in `config/agi_loop.json` (default 200k tokens / $2 per day). Loops don't start on a fresh install — you start them. (A loop you started will resume after a restart.) A loop may optionally be given its own Linux sandbox (`services/agent-linux`); that is off unless you deploy it and set `SUPERVISOR_LINUX_URL`/`SUPERVISOR_LINUX_TOKEN`.
 
 ## Tools
 
@@ -174,5 +175,7 @@ python -X utf8 -m tests.test_torture       # several minutes, ~3.5k checks
 Agents can call tools, search the web, and (if you enable them) send email and run in an autonomous loop. Start with the Supervisor, keep loops on a small budget, and read what a tool will do before you grant it. Do not paste secrets into chats — memory is stored in plain files.
 
 ## License
+
+In plain terms: you can run, study and modify it for free. Under the AGPL, if you offer a modified version to others over a network you must share your source; if you'd rather keep your changes closed, use the commercial terms instead.
 
 Dual-licensed, the same as [SoulScript-Engine](https://github.com/DrTHunter/SoulScript-Engine): use it under the **GNU AGPL v3** ([LICENSE](LICENSE)) **or** the commercial terms in [LICENSE.md](LICENSE.md) (free until $100k lifetime gross revenue, then 5% of net). You only need one.

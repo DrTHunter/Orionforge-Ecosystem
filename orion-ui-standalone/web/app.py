@@ -309,6 +309,9 @@ def _ga_context(request: Request) -> dict:
     return {
         "skip": bool(email and email in ADMIN_EMAILS) or bool(uid and uid in ADMIN_USER_IDS),
         "user_id": uid,
+        # Analytics are strictly opt-in: nothing loads unless the operator sets these env vars.
+        "ga_id": os.environ.get("GA_MEASUREMENT_ID", "").strip(),
+        "reddit_id": os.environ.get("REDDIT_PIXEL_ID", "").strip(),
     }
 
 

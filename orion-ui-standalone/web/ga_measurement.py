@@ -6,7 +6,7 @@ buyer closes the tab before the success page loads or blocks gtag.js.
 Config (env):
   GA_API_SECRET      — GA Admin → Data streams → (soulscript stream) →
                        Measurement Protocol API secrets. Unset = disabled (no-op).
-  GA_MEASUREMENT_ID  — defaults to the soulscript.orionforge.chat stream.
+  GA_MEASUREMENT_ID  — your GA4 stream id. Unset (the default) = analytics fully off.
 """
 
 import hashlib
@@ -20,7 +20,7 @@ import requests
 
 log = logging.getLogger("soulscript.ga")
 
-GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "G-2SCFQ9V4MW")
+GA_MEASUREMENT_ID = os.environ.get("GA_MEASUREMENT_ID", "")
 GA_API_SECRET = os.environ.get("GA_API_SECRET", "")
 _MP_URL = "https://www.google-analytics.com/mp/collect"
 

@@ -1,4 +1,6 @@
-{#- Google Analytics for soulscript.orionforge.chat (property "Orion Forge - User Interface").
+{#- OPTIONAL analytics, OFF by default. Nothing is loaded or sent unless the operator sets
+      GA_MEASUREMENT_ID (and, separately, REDDIT_PIXEL_ID) in the environment.
+    Originally written for a hosted deploy (property "Orion Forge - User Interface").
     Included by base.html, login.html and plans.html.
     - Skipped entirely for the owner/admins (ga_context().skip) and on any browser
       opted out with ?internal=on (undo with ?internal=off).
@@ -9,8 +11,8 @@
 {%- set _ga = ga_context(request) %}
 <script>
   (function () {
-    var ID = 'G-2SCFQ9V4MW', KEY = 'of_internal';
-    var q = new URLSearchParams(location.search).get('internal'), off = {{ 'true' if _ga.skip else 'false' }};
+    var ID = {{ (_ga.ga_id or '') | tojson }}, RID = {{ (_ga.reddit_id or '') | tojson }}, KEY = 'of_internal';
+    var q = new URLSearchParams(location.search).get('internal'), off = {{ 'true' if (_ga.skip or not _ga.ga_id) else 'false' }};
     try {
       if (q === 'on') localStorage.setItem(KEY, '1');
       if (q === 'off') localStorage.removeItem(KEY);
@@ -28,16 +30,16 @@
     gtag('js', new Date());
     gtag('config', ID{% if _ga.user_id %}, { user_id: {{ _ga.user_id | tojson }} }{% endif %});
 
-    // Reddit Pixel (a2_j8k95hguw20m) — same opt-outs as GA above. externalId is the
+    // Reddit Pixel (only if REDDIT_PIXEL_ID is set) — same opt-outs as GA above. externalId is the
     // opaque Supabase user id; no email/phone is sent.
-    !function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id=a2_j8k95hguw20m",t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);
-    rdt('init', 'a2_j8k95hguw20m'{% if _ga.user_id %}, { externalId: {{ _ga.user_id | tojson }} }{% endif %});
-    rdt('track', 'PageVisit');
+    if (RID) !function(w,d){if(!w.rdt){var p=w.rdt=function(){p.sendEvent?p.sendEvent.apply(p,arguments):p.callQueue.push(arguments)};p.callQueue=[];var t=d.createElement("script");t.src="https://www.redditstatic.com/ads/pixel.js?pixel_id="+RID,t.async=!0;var s=d.getElementsByTagName("script")[0];s.parentNode.insertBefore(t,s)}}(window,document);
+    if (RID) rdt('init', RID{% if _ga.user_id %}, { externalId: {{ _ga.user_id | tojson }} }{% endif %});
+    if (RID) rdt('track', 'PageVisit');
 
     if (evt) {
       var parts = decodeURIComponent(evt[1]).split(':');
       if (parts[0] === 'sign_up' || parts[0] === 'login') gtag('event', parts[0], { method: parts[1] || 'unknown' });
-      if (parts[0] === 'sign_up') rdt('track', 'SignUp', { conversionId: 'signup_' + ({{ _ga.user_id | tojson }} || Date.now()) });
+      if (RID && parts[0] === 'sign_up') rdt('track', 'SignUp', { conversionId: 'signup_' + ({{ _ga.user_id | tojson }} || Date.now()) });
     }
   })();
 </script>
