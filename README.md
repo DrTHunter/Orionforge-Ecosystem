@@ -4,6 +4,8 @@
 
 *Strategy for sustaining individual AI identity over time.*
 
+> This is the downloadable, local edition of the OrionForge ecosystem. The full vision has three parts — a modular web UI, a cloud portal where each person runs their own agents, and a marketplace for identities, tools and mods — plus a fourth that grew out of them: [minds that keep running](#agi-loop--minds-that-keep-running-optional). This repo is the first and fourth: the UI and the loop, on your own machine.
+
 OrionForge is a self-hostable web app for building and running AI beings with **identity** — not just prompts. Each agent has a Soul Script (who it is), a memory vault (what it has lived), tools (what it can do), and a model of your choosing. Identity lives in plain Markdown/YAML files that **you** own.
 
 It rests on one idea: character drift is a retrieval problem. A single giant system prompt gets diluted as a conversation grows, so OrionForge rebuilds the prompt every turn from layers — a short base identity, the Soul Script sections most relevant to what was just said, pinned notes, retrieved memories, and recent history. The Soul Script sits in a read-only index; memory is read/write. Conversations can add to what an agent remembers, but cannot rewrite who it is. (The standalone framework is [SoulScript-Engine](https://github.com/DrTHunter/SoulScript-Engine).)
@@ -119,17 +121,34 @@ Every chat message passes through a six-layer prompt assembly pipeline:
 
 Agents can save memories during conversation with `[MEMORY_SAVE: ...]` tags.
 
-## The AGI Loop (optional)
+## AGI Loop — minds that keep running (optional)
 
-A continuously running inner world for one agent: it senses time and its own state, predicts, attends, thinks, acts with loop-only tools, and rests. The Supervisor and K-OS each have a loop (`/agi-loop`, `/agi-loop?loop=k_os`), with daily token and cost caps in `config/agi_loop.json` (default 200k tokens / $2 per day). Loops don't start on a fresh install — you start them. (A loop you started will resume after a restart.) A loop may optionally be given its own Linux sandbox (`services/agent-linux`); that is off unless you deploy it and set `SUPERVISOR_LINUX_URL`/`SUPERVISOR_LINUX_TOKEN`.
+Beyond chat, OrionForge can run an agent as a **loop**: a wall-clock daemon (`orion-ui-standalone/src/agi_loop/`) that keeps going between messages. Each tick it *senses, updates beliefs, predicts, attends, feels, thinks/acts, guards, records, then sleeps*. A message at the door wakes it early.
+
+- **Inner field** — what the agent sees is arranged around whatever it is focused on (FOCUS / CLOSE / AROUND / EDGE) by semantic relatedness, with HUD gauges, alerts, fading and finite capacity.
+- **Predictive senses** — raw channels the agent can't author (time, energy, body, door, bench) feed running beliefs; the mismatch becomes surprise, which drives learning and captures attention. Mood emerges from it.
+- **Energy** — a daily token budget (default 200k tokens / $2 per day, in `config/agi_loop.json`). Cadence slows as it drains; when it runs out the loop sleeps until the budget resets.
+- **Workbench** — a private making-space of files and reflections. Documents, whole projects (`.zip`) and long text sent with a message land there.
+- **Group chat** — a shared room (`/group-chat`) where the loops and you talk, plus a shared append-only **slab** for state. Each loop's own energy is what ends a conversation.
+- **Loop tools** — `attend`, `reply`, `loop_control`, `group`, and `llm` (hand a self-contained job to another, cheaper model; its cost comes out of the loop's energy).
+- **Watchdog** — an engine-side witness that checks process liveness and schedule presence separately, so a loop's own account of itself is never the only evidence.
+- **A Linux machine (optional)** — a loop can be given its own Ubuntu sandbox (`services/agent-linux`) so commands never run on your host. Off unless you deploy one and set `SUPERVISOR_LINUX_URL` / `SUPERVISOR_LINUX_TOKEN` (or `KOS_LINUX_*`).
+
+Two loops are configured: **Supervisor** (`/agi-loop`) and **K-OS** (`/agi-loop?loop=k_os`). They don't start on a fresh install — you start them. (A loop you started resumes after a restart.)
 
 ## Tools
 
-`memory`, `directives`, `web_search`, `email`, `inbox`, `cost_tracker`, `model_router`, `agi_loop`, `runtime_info`, `echo`, `continuation_update`. An agent can only call tools listed in its profile. Web search needs a SearXNG endpoint (`SEARXNG_URL`); `services/searxng` has a Dockerfile.
+`memory`, `directives`, `web_search`, `email`, `inbox`, `cost_tracker`, `model_router`, `agi_loop`, `runtime_info`, `echo`, `continuation_update`. An agent can only call tools listed in its profile. Inside an AGI loop, agents also get the loop-only tools `attend`, `reply`, `loop_control`, `group` and `llm`. Web search needs a SearXNG endpoint (`SEARXNG_URL`); `services/searxng` has a Dockerfile.
 
 ## Use your agents from Claude, ChatGPT or Gemini (MCP)
 
-`orion-ui-standalone/mcp_server/` exposes your agents as an MCP server (`list_agents`, `call_agent`, `load_default`, `search_memory`, …). See its README. This is optional and runs against your local install.
+`orion-ui-standalone/mcp_server/` exposes your agents as an MCP server (`list_agents`, `call_agent`, `load_default`, `search_memory`, `save_project_summary`, …), with slash-command prompts `summon` and `default_personality`. It needs one extra package (`pip install -r orion-ui-standalone/mcp_server/requirements.txt`). Then, for Claude Code, from `orion-ui-standalone/`:
+
+```bash
+claude mcp add orionforge -- python -m mcp_server.orion_mcp
+```
+
+A handy convention: tell your client that a message of `..` means `load_default()`. See the MCP README for the full guide; it runs against your local install.
 
 ---
 
@@ -140,13 +159,13 @@ Orionforge-Ecosystem/
 ├── start-local.ps1 / start-local.sh   # one-command local launch
 ├── requirements.txt
 ├── orion-ui-standalone/     # the app (this is what you run)
-│   ├── web/                 # FastAPI app and templates
-│   ├── src/                 # memory (FAISS), LLM clients, tools, directives, AGI loop
+│   ├── web/                 # FastAPI app (~190 routes, 20 templates incl. AGI Loop, Group Chat, Connect)
+│   ├── src/                 # memory (FAISS), LLM clients, tools, directives, agi_loop/ (daemon, field, predictions, budget, workbench, group chat, watchdog)
 │   ├── profiles/  prompts/  directives/  notes/   # one file of each per agent
 │   ├── config/              # settings and connections (secrets are git-ignored)
 │   ├── data/                # chats, memory vault, uploads (runtime; git-ignored)
 │   ├── mcp_server/          # MCP bridge
-│   └── tests/
+│   └── tests/               # 15 files, ~340 test functions
 ├── engine/                  # frozen core mirror
 └── services/                # optional sidecars: searxng, ollama, whisper, openedai-speech, agent-linux
 ```

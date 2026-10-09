@@ -25,7 +25,17 @@ Open **http://localhost:8989**.
 
 ```
 orion-ui-standalone/
-├── web/                # FastAPI app: routes (app.py), auth, user data isolation, templates, static files
+├── web/                # FastAPI app (~8,300 lines in app.py, ~190 routes, 20 templates)
+│   ├── app.py          # All page & API routes
+│   ├── user_data.py    # Per-user data isolation (hosted mode)
+│   ├── auth.py         # Optional Supabase auth (off in local mode)
+│   ├── key_vault.py    # Fernet encryption of stored API keys
+│   ├── image_gen.py    # Image generation (9 providers)
+│   ├── video_gen.py    # Video generation (Google Veo)
+│   ├── mcp_tokens.py   # Personal tokens for the optional hosted /mcp endpoint
+│   ├── public_chat.py  # Anonymous demo chat (needs a server-side key; unused locally)
+│   ├── stripe_billing.py, ga_measurement.py  # Hosted-only billing and analytics (off by default)
+│   └── templates/      # Jinja2 pages incl. agi_loop, group_chat, connect
 ├── src/                # Engine modules
 │   ├── directives/     # Soul Script parsing, storage, injection, manifest
 │   ├── governance/     # Session-scoped directive tracking
@@ -36,7 +46,8 @@ orion-ui-standalone/
 │   ├── routing/        # Optional multi-tier model router
 │   ├── storage/        # Note loading
 │   ├── tools/          # Tool implementations + registry
-│   └── agi_loop/       # The optional continuously running loop
+│   └── agi_loop/       # Loops: daemon, world (field), prediction, channels, budget, workbench,
+│                       #   linux, groupchat, documents, watchdog, loop-only tools
 ├── profiles/           # One YAML per agent: provider, model, tools, memory scopes
 ├── prompts/            # One base system prompt per agent (*.system.md)
 ├── directives/         # One Soul Script per agent (*.md), plus shared.md for all agents
@@ -45,7 +56,7 @@ orion-ui-standalone/
 ├── data/               # Runtime data: chats, memory vault, uploads (git-ignored except seed files)
 ├── mcp_server/         # MCP server: use your agents from Claude, ChatGPT, Gemini
 ├── scripts/            # Seeding scripts and the optional VS Code bridge
-└── tests/              # Test suite
+└── tests/              # Test suite — 15 files, ~340 test functions
 ```
 
 ## Agents
@@ -67,10 +78,10 @@ A new agent needs a profile, a system prompt and a directive file that share an 
 | Vault | `/vault` | Browse, search and edit persistent memories |
 | Knowledge | `/knowledge` | Notes that can be attached to agents (always-on or retrieved) |
 | Tools | `/tools` | Tool settings, memory profiles, email, web search, model router |
-| Settings | `/settings` | Model connections, voice, image, timezone, skin |
+| Settings | `/settings` | Model connections, voice, image and video generation, timezone, skin |
 | Pricing | `/pricing` | Per-model token prices used for cost tracking |
 | Skins | `/skins` | UI themes |
-| AGI Loop | `/agi-loop`, `/agi-loop?loop=k_os` | The optional loop for the Supervisor and K-OS |
+| AGI Loop | `/agi-loop`, `/agi-loop?loop=k_os` | Live view of each loop: vitals, field, predictions, processes, workbench, inbox, journal, ticks, Linux machine, configuration. One view per loop (Supervisor, K-OS) |
 | Group Chat | `/group-chat` | One room shared by the running loops and you |
 | Connect | `/connect` | How to reach your agents over MCP |
 | Wiki | `/about` | Project wiki built from the READMEs |
