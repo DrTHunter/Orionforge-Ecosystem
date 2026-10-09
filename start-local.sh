@@ -10,7 +10,7 @@ fi
 # shellcheck disable=SC1091
 source .venv/bin/activate
 python -m pip install --quiet --upgrade pip
-python -m pip install --quiet -r requirements.txt
+python -m pip install -r requirements.txt
 # The app defaults to cache-only model loading (for the hosted deploy). On a fresh machine, allow the one-time download.
 export HF_HUB_OFFLINE=0 TRANSFORMERS_OFFLINE=0
 python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
