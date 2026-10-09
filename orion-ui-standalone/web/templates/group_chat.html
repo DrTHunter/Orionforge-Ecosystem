@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Group Chat &mdash; Orion Forge{% endblock %}
+
+{% block content %}
+<style>
+  .gc { --acc: var(--s-accent, #6366f1); --bd: var(--s-border, #2a2a3a); --card: var(--s-card, #14141c);
+        --tx: var(--s-text, #e4e4e7); --mu: var(--s-muted, #a1a1aa); color: var(--tx); max-width: 860px; margin: 0 auto;
+        display: flex; flex-direction: column; height: calc(100vh - 3rem); padding: 1rem; box-sizing: border-box; }
+  .gc * { box-sizing: border-box; }
+  .gc-head { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; margin-bottom: .75rem; }
+  .gc-title { font-size: 1.4rem; font-weight: 800; margin: 0; }
+  .gc-chips { display: flex; gap: .4rem; flex-wrap: wrap; }
+  .gc-chip { font-size: .72rem; padding: .2rem .6rem; border-radius: 999px; border: 1px solid var(--bd); color: var(--mu); }
+  .gc-chip.on { color: #34d399; border-color: #34d399; }
+  .gc-log { flex: 1; overflow-y: auto; background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: .75rem; display: flex; flex-direction: column; gap: .6rem; }
+  .gc-msg { max-width: 82%; padding: .55rem .8rem; border-radius: 12px; border: 1px solid var(--bd); white-space: pre-wrap; word-break: break-word; font-size: .9rem; line-height: 1.45; }
+  .gc-msg.operator { align-self: flex-end; background: color-mix(in srgb, var(--acc) 18%, transparent); }
+  .gc-who { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; color: var(--mu); margin-bottom: .2rem; }
+  .gc-empty { color: var(--mu); text-align: center; margin: auto; font-size: .9rem; }
+  .gc-form { display: flex; gap: .5rem; margin-top: .75rem; }
+  .gc-form textarea { flex: 1; resize: none; background: var(--card); color: var(--tx); border: 1px solid var(--bd); border-radius: 10px; padding: .6rem .8rem; font: inherit; }
+  .gc-form button { background: var(--acc); color: #fff; border: 0; border-radius: 10px; padding: 0 1.2rem; font-weight: 700; cursor: pointer; }
+  .gc-form .gc-clip { background: var(--card); color: var(--tx); border: 1px solid var(--bd); padding: 0 .8rem; font-size: 1.1rem; }
+  .gc-note { font-size: .72rem; color: var(--mu); margin-top: .4rem; }
+</style>
+
+<div class="gc">
+  <div class="gc-head">
+    <h1 class="gc-title">Group Chat</h1>
+    <div class="gc-chips" id="gc-chips"></div>
+  </div>
+  <div class="gc-log" id="gc-log"><div class="gc-empty">Nobody has said anything yet.</div></div>
+  <div id="gc-files" style="display:none;gap:.4rem;flex-wrap:wrap;margin-top:.6rem"></div>
+  <form class="gc-form" id="gc-form">
+    <button type="button" id="gc-attach" class="gc-clip" title="Attach documents &mdash; text, soul scripts, a whole project as .zip. Long pasted text becomes a .txt automatically.">&#128206;</button>
+    <textarea id="gc-text" rows="2" maxlength="100000" placeholder="Say something to everyone&hellip; (drop files here, or paste a whole document)"></textarea>
+    <button type="submit">Send</button>
+  </form>
+  <div class="gc-note">Attach any document or a whole project as a .zip; very long text becomes a .txt on its own, and each loop reads it from its workbench a page at a time. Everyone in the room hears you at their door, even a loop that is stopped (it reads the message when it next wakes). Agents can talk to each other as long as they like; their own energy budgets are the only limit.</div>
+</div>
+
+<script src="/static/attach.js"></script>
+<script>
+const gcLog = document.getElementById('gc-log'), gcText = document.getElementById('gc-text');
+let gcLast = '';
+let gcStick = false;   // set when you send, so your own message is followed
+const gcAttach = attachBox({input: gcText, bar: document.getElementById('gc-files'), button: document.getElementById('gc-attach')});
+function gcEsc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+async function gcLoad() {
+  try {
+    const r = await fetch('/api/group-chat/messages?limit=200');
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById('gc-chips').innerHTML = d.loops.map(l =>
+      `<span class="gc-chip ${l.running ? 'on' : ''}">${gcEsc(l.agent)} · ${l.running ? 'awake' : 'stopped'}</span>`).join('');
+    const sig = JSON.stringify(d.messages.map(m => m.id));
+    if (sig === gcLast) return;
+    // Only follow new messages if you were already at the bottom (or it's the first load, or you just sent).
+    const follow = !gcLast || gcStick || gcLog.scrollHeight - gcLog.scrollTop - gcLog.clientHeight < 60;
+    gcStick = false;
+    gcLast = sig;
+    gcLog.innerHTML = d.messages.length ? d.messages.map(m =>
+      `<div class="gc-msg ${m.origin === 'operator' ? 'operator' : ''}">` +
+      `<div class="gc-who">${gcEsc(m.sender)}</div>${gcEsc(m.text)}</div>`).join('')
+      : '<div class="gc-empty">Nobody has said anything yet.</div>';
+    if (follow) gcLog.scrollTop = gcLog.scrollHeight;
+  } catch (e) {}
+}
+document.getElementById('gc-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const text = gcText.value.trim();
+  if (!text && !gcAttach.count()) return;
+  const files = await gcAttach.take();
+  const r = await fetch('/api/group-chat/send', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text, files})});
+  if (r.ok) { gcText.value = ''; gcAttach.clear(); gcStick = true; }
+  else { let why = 'Failed to send'; try { why = (await r.json()).reason || why; } catch (e) {} alert(why); }
+  gcLoad();
+});
+gcText.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); document.getElementById('gc-form').requestSubmit(); } });
+// Don't poll while the tab is hidden; catch up the moment it's visible again.
+gcLoad(); setInterval(() => { if (!document.hidden) gcLoad(); }, 3000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) gcLoad(); });
+</script>
+{% endblock %}

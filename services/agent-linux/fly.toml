@@ -1,0 +1,27 @@
+# Agent Linux box — an Ubuntu machine the AGI loop can run commands on.
+# Private: no public IPs. The OrionForge app reaches it at http://agent-linux.internal:8080
+# over Fly's private network, with the SHELL_TOKEN secret (SUPERVISOR_LINUX_TOKEN on the app side).
+# Watch it: `fly proxy 7681 -a agent-linux`, then open http://localhost:7681
+app = 'agent-linux'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[mounts]
+  source = 'agent_home'
+  destination = '/home/supervisor'
+  initial_size = '9gb'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  memory = '1gb'
+
+[checks]
+  [checks.health]
+    port = 8080
+    type = 'http'
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '30s'
+    path = '/health'

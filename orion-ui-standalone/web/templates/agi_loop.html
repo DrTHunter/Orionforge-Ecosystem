@@ -1,0 +1,1256 @@
+{% extends "base.html" %}
+{% block title %}AGI Loop &mdash; Orion Forge{% endblock %}
+
+{% block content %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
+<style>
+  .al { --acc: var(--s-accent, #6366f1); --acc2: var(--s-accent2, #818cf8); --bd: var(--s-border, #2a2a3a);
+        --card: var(--s-card, #14141c); --tx: var(--s-text, #e4e4e7); --mu: var(--s-muted, #a1a1aa);
+        --dim: #71717a; --ok: #10b981; --warn: #f59e0b; --bad: #ef4444; --info: #38bdf8;
+        --perc: #38bdf8; --self: #a78bfa; --make: #f59e0b; color: var(--tx); }
+  .al * { box-sizing: border-box; }
+  .al-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+  .al-title { font-size: 1.5rem; font-weight: 800; display: flex; align-items: center; gap: .5rem; margin: 0; }
+  .al-sub { font-size: .85rem; color: var(--mu); margin-top: .2rem; }
+  .al-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .al-muted { color: var(--mu); } .al-dim { color: var(--dim); } .al-small { font-size: .75rem; }
+
+  /* pills & buttons */
+  .al-pill { display: inline-flex; align-items: center; gap: .4rem; padding: .25rem .7rem; border-radius: 999px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; border: 1px solid; white-space: nowrap; }
+  .al-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .ph-idle, .ph-stopped { color: #a1a1aa; border-color: rgba(161,161,170,.3); background: rgba(161,161,170,.08); }
+  .ph-ticking, .ph-thinking { color: #6ee7b7; border-color: rgba(16,185,129,.35); background: rgba(16,185,129,.1); }
+  .ph-ticking .al-dot, .ph-thinking .al-dot { animation: al-pulse 1.2s infinite; }
+  .ph-sleeping { color: #a5b4fc; border-color: rgba(99,102,241,.35); background: rgba(99,102,241,.1); }
+  .ph-resting { color: #c4b5fd; border-color: rgba(167,139,250,.35); background: rgba(167,139,250,.1); }
+  .ph-paused { color: #fcd34d; border-color: rgba(245,158,11,.35); background: rgba(245,158,11,.1); }
+  .ph-exhausted { color: #fca5a5; border-color: rgba(239,68,68,.35); background: rgba(239,68,68,.1); }
+  @keyframes al-pulse { 50% { opacity: .35; } }
+  .al-btn { display: inline-flex; align-items: center; gap: .4rem; padding: .5rem .95rem; border-radius: .5rem; font-size: .8rem; font-weight: 700; cursor: pointer; border: 1px solid var(--bd); background: rgba(255,255,255,.03); color: var(--tx); transition: filter .15s, transform .15s; }
+  .al-btn:hover { filter: brightness(1.2); transform: translateY(-1px); }
+  .al-btn:disabled { opacity: .4; cursor: not-allowed; transform: none; }
+  .b-go { background: rgba(16,185,129,.14); color: #6ee7b7; border-color: rgba(16,185,129,.35); }
+  .b-pause { background: rgba(245,158,11,.14); color: #fcd34d; border-color: rgba(245,158,11,.35); }
+  .b-stop, .b-danger { background: rgba(239,68,68,.14); color: #fca5a5; border-color: rgba(239,68,68,.35); }
+  .b-acc { background: rgba(99,102,241,.16); color: #c7d2fe; border-color: rgba(99,102,241,.4); }
+  .al-btn-sm { padding: .3rem .6rem; font-size: .72rem; }
+
+  /* vitals strip */
+  .al-vitals { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: .5rem; margin-bottom: 1rem; }
+  .al-vital { background: var(--card); border: 1px solid var(--bd); border-radius: .6rem; padding: .55rem .75rem; min-width: 0; }
+  .al-vital .k { font-size: .62rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--dim); }
+  .al-vital .v { font-size: 1rem; font-weight: 800; margin-top: .1rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .al-bar { height: 6px; border-radius: 999px; background: rgba(255,255,255,.07); overflow: hidden; margin-top: .3rem; }
+  .al-bar > i { display: block; height: 100%; border-radius: 999px; background: var(--ok); transition: width .5s; }
+  @media (max-width: 1100px) { .al-vitals { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+  @media (max-width: 640px) { .al-vitals { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+  /* tabs */
+  .al-tabs { display: flex; gap: 0; border-bottom: 1px solid var(--bd); margin-bottom: 1.25rem; overflow-x: auto; }
+  .al-tab { padding: .7rem 1rem; font-size: .84rem; font-weight: 700; color: var(--dim); background: none; border: none; border-bottom: 2px solid transparent; cursor: pointer; white-space: nowrap; position: relative; top: 1px; }
+  .al-tab:hover { color: var(--mu); }
+  .al-tab.active { color: var(--tx); border-bottom-color: var(--acc); }
+  .al-badge { display: inline-flex; min-width: 1.15rem; height: 1.15rem; padding: 0 .3rem; border-radius: 999px; align-items: center; justify-content: center; font-size: .65rem; background: var(--bad); color: #fff; margin-left: .3rem; }
+  .al-badge.zero { background: rgba(113,113,122,.3); color: var(--dim); }
+  .al-tabselect { display: none; width: 100%; padding: .65rem .8rem; margin-bottom: 1.25rem; background: var(--card); border: 1px solid var(--bd); border-radius: .5rem; color: var(--tx); font-weight: 700; }
+  @media (max-width: 768px) { .al-tabs { display: none; } .al-tabselect { display: block; } }
+  .al-panel { display: none; animation: al-fade .18s ease; }
+  .al-panel.active { display: block; }
+  @keyframes al-fade { from { opacity: 0; transform: translateY(4px); } }
+
+  /* layout */
+  .al-grid { display: grid; gap: 1rem; }
+  .g2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .g3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .g-main { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); }
+  @media (max-width: 960px) { .g2, .g3, .g-main { grid-template-columns: minmax(0, 1fr); } }
+  .al-card { background: var(--card); border: 1px solid var(--bd); border-radius: .75rem; padding: 1rem; min-width: 0; }
+  .al-card h3 { margin: 0 0 .2rem; font-size: .78rem; font-weight: 800; letter-spacing: .07em; text-transform: uppercase; color: var(--mu); display: flex; align-items: center; justify-content: space-between; gap: .5rem; }
+  .al-card .hint { font-size: .75rem; color: var(--dim); margin: 0 0 .75rem; }
+  .al-scroll { max-height: 420px; overflow-y: auto; }
+  .al-empty { text-align: center; padding: 2rem 1rem; color: var(--dim); font-size: .85rem; }
+  .al-row { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+  .al-chip { display: inline-flex; align-items: center; gap: .25rem; padding: .15rem .5rem; border-radius: .35rem; background: rgba(255,255,255,.05); border: 1px solid var(--bd); font-size: .7rem; color: var(--mu); font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+  .al-chip.bad { color: #fca5a5; border-color: rgba(239,68,68,.35); }
+  .al-pre { white-space: pre-wrap; word-break: break-word; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .78rem; line-height: 1.55; background: rgba(0,0,0,.25); border: 1px solid var(--bd); border-radius: .5rem; padding: .85rem; margin: 0; color: var(--tx); }
+
+  /* conversation */
+  .al-convo { display: flex; flex-direction: column; gap: .5rem; max-height: 360px; overflow-y: auto; padding-right: .25rem; }
+  .al-msg { max-width: 85%; padding: .55rem .8rem; border-radius: .75rem; font-size: .85rem; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+  .al-msg.op { align-self: flex-end; background: rgba(99,102,241,.16); border: 1px solid rgba(99,102,241,.3); }
+  .al-msg.ag { align-self: flex-start; background: rgba(255,255,255,.04); border: 1px solid var(--bd); }
+  .al-msg .meta { font-size: .65rem; color: var(--dim); margin-top: .25rem; }
+  .al-input { width: 100%; background: rgba(0,0,0,.2); border: 1px solid var(--bd); border-radius: .5rem; color: var(--tx); padding: .6rem .75rem; font-size: .85rem; font-family: inherit; outline: none; }
+  .al-input:focus { border-color: var(--acc); }
+  textarea.al-input { resize: vertical; min-height: 64px; }
+
+  /* field */
+  .al-fieldwrap { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 1rem; align-items: start; }
+  @media (max-width: 1100px) { .al-fieldwrap { grid-template-columns: minmax(0, 1fr); } }
+  .al-radar { width: 100%; max-width: 520px; height: auto; display: block; margin: 0 auto; }
+  .al-radar .ring { fill: none; stroke: rgba(255,255,255,.08); stroke-dasharray: 3 5; }
+  .al-radar .ringlbl { fill: var(--dim); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
+  .al-radar .srclbl { fill: var(--mu); font-size: 9.5px; font-weight: 700; }
+  .al-radar .dot { cursor: pointer; transition: r .3s; }
+  .al-radar .dot:hover { stroke: #fff; stroke-width: 2; }
+  .al-radar .lbl { fill: var(--tx); font-size: 9.5px; pointer-events: none; }
+  .al-radar .focuslbl { fill: var(--tx); font-size: 10.5px; font-weight: 800; pointer-events: none; }
+  .al-hud { display: flex; flex-wrap: wrap; gap: .4rem; margin-bottom: .75rem; }
+  .al-hud .al-chip { font-size: .72rem; color: var(--tx); }
+  .al-ringlist h5 { margin: .75rem 0 .3rem; font-size: .66rem; font-weight: 800; letter-spacing: .08em; color: var(--dim); text-transform: uppercase; }
+  .al-focuscard { border: 1px solid var(--acc); border-radius: .6rem; padding: .6rem .75rem; background: rgba(99,102,241,.08); font-size: .85rem; line-height: 1.45; word-break: break-word; }
+  .al-item { display: block; width: 100%; text-align: left; font-size: .76rem; line-height: 1.35; padding: .35rem .5rem; margin-top: .3rem; border-radius: .35rem; background: rgba(255,255,255,.035); border: 1px solid transparent; border-left: 3px solid #52525b; color: var(--tx); cursor: pointer; word-break: break-word; font-family: inherit; }
+  .al-item:hover { border-color: var(--bd); }
+  .al-item.tense { border-left-color: var(--bad); } .al-item.warm { border-left-color: var(--ok); }
+  .al-item .id { font-family: ui-monospace, Menlo, monospace; color: var(--dim); margin-right: .25rem; }
+  .al-item .lvl { float: right; font-size: .58rem; color: var(--dim); text-transform: uppercase; margin-left: .3rem; }
+  .al-item.resolved { text-decoration: line-through; text-decoration-color: rgba(255,255,255,.25); }
+  .al-edge { font-size: .74rem; color: var(--mu); line-height: 1.6; }
+  .al-alert { font-size: .78rem; padding: .35rem .5rem; margin-top: .3rem; border-radius: .35rem; background: rgba(245,158,11,.08); border-left: 3px solid var(--warn); cursor: pointer; }
+
+  /* mood */
+  .al-moodword { font-size: 1.6rem; font-weight: 900; text-transform: capitalize; }
+  .al-axis { position: relative; height: 8px; border-radius: 999px; background: linear-gradient(90deg, rgba(239,68,68,.5), rgba(113,113,122,.25) 50%, rgba(16,185,129,.5)); margin: .35rem 0 .7rem; }
+  .al-axis.ar { background: linear-gradient(90deg, rgba(113,113,122,.25), rgba(245,158,11,.6)); }
+  .al-axis > b { position: absolute; top: -4px; width: 16px; height: 16px; border-radius: 50%; background: var(--tx); border: 3px solid var(--card); transform: translateX(-50%); transition: left .5s; }
+  .al-kv { display: grid; grid-template-columns: auto 1fr; gap: .25rem .75rem; font-size: .78rem; }
+  .al-kv dt { color: var(--dim); } .al-kv dd { margin: 0; }
+  .al-tbar { display: flex; align-items: center; gap: .5rem; font-size: .72rem; margin-top: .3rem; }
+  .al-tbar span:first-child { width: 4.5rem; color: var(--mu); }
+  .al-tbar .al-bar { flex: 1; margin: 0; }
+
+  /* tables */
+  .al-table { width: 100%; border-collapse: collapse; font-size: .78rem; }
+  .al-table th { text-align: left; font-size: .64rem; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); padding: .45rem .5rem; border-bottom: 1px solid var(--bd); font-weight: 800; }
+  .al-table td { padding: .5rem; border-bottom: 1px solid rgba(255,255,255,.04); vertical-align: middle; }
+  .al-table tr.click { cursor: pointer; } .al-table tr.click:hover td { background: rgba(99,102,241,.06); }
+  .al-tablewrap { overflow-x: auto; }
+
+  /* linux */
+  .lx-strip { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .9rem; margin-bottom: 1rem; font-size: .76rem; color: var(--mu); }
+  .lx-strip .al-bar { width: 90px; display: inline-block; vertical-align: middle; margin: 0 0 0 .35rem; }
+  .lx-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; background: var(--dim); margin-right: .35rem; }
+  .lx-dot.on { background: var(--ok); box-shadow: 0 0 6px var(--ok); } .lx-dot.off { background: var(--bad); }
+  .lx-seg { display: inline-flex; border: 1px solid var(--bd); border-radius: .5rem; overflow: hidden; margin-left: auto; }
+  .lx-seg button { padding: .4rem .9rem; font-size: .76rem; font-weight: 700; background: none; border: none; color: var(--dim); cursor: pointer; }
+  .lx-seg button.active { background: rgba(99,102,241,.18); color: var(--tx); }
+  .lx-files { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 1rem; align-items: start; }
+  @media (max-width: 860px) { .lx-files { grid-template-columns: minmax(0, 1fr); } .lx-seg { margin-left: 0; } }
+  .lx-tree { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; max-height: 560px; overflow: auto; }
+  .lx-node { display: flex; align-items: center; gap: .35rem; width: 100%; text-align: left; padding: .28rem .35rem; border-radius: .3rem; background: none; border: none; color: var(--tx); cursor: pointer; font: inherit; white-space: nowrap; }
+  .lx-node:hover { background: rgba(255,255,255,.05); } .lx-node.sel { background: rgba(99,102,241,.16); }
+  .lx-node .nm { overflow: hidden; text-overflow: ellipsis; } .lx-node .sz { margin-left: auto; color: var(--dim); font-size: .66rem; padding-left: .5rem; }
+  .lx-node .rd { font-size: .6rem; padding: 0 .3rem; border-radius: .25rem; border: 1px solid rgba(245,158,11,.35); color: #fcd34d; }
+  .lx-kids { padding-left: .9rem; border-left: 1px solid rgba(255,255,255,.06); margin-left: .45rem; }
+  .lx-viewhead { display: flex; align-items: center; justify-content: space-between; gap: .5rem; font-family: ui-monospace, Menlo, monospace; font-size: .74rem; color: var(--mu); margin-bottom: .6rem; word-break: break-all; }
+  .lx-md { font-size: .86rem; line-height: 1.6; word-break: break-word; }
+  .lx-md h1, .lx-md h2, .lx-md h3 { margin: 1rem 0 .4rem; line-height: 1.25; } .lx-md h1 { font-size: 1.3rem; } .lx-md h2 { font-size: 1.1rem; } .lx-md h3 { font-size: .95rem; }
+  .lx-md :first-child { margin-top: 0; } .lx-md p, .lx-md ul, .lx-md ol { margin: .4rem 0; } .lx-md ul, .lx-md ol { padding-left: 1.3rem; } .lx-md ul { list-style: disc; } .lx-md ol { list-style: decimal; }
+  .lx-md code { font-family: ui-monospace, Menlo, monospace; font-size: .8em; background: rgba(255,255,255,.07); padding: .1rem .3rem; border-radius: .25rem; }
+  .lx-md pre { background: rgba(0,0,0,.3); border: 1px solid var(--bd); border-radius: .5rem; padding: .75rem; overflow-x: auto; }
+  .lx-md pre code { background: none; padding: 0; } .lx-md a { color: var(--acc2); }
+  .lx-md table { border-collapse: collapse; display: block; overflow-x: auto; } .lx-md th, .lx-md td { border: 1px solid var(--bd); padding: .3rem .5rem; }
+  .lx-term { background: #07070b; border: 1px solid var(--bd); border-radius: .6rem; padding: .85rem 1rem; height: 560px; max-height: 70vh; overflow: auto;
+             font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: .76rem; line-height: 1.5; white-space: pre-wrap; word-break: break-word; color: #d4d4d8; }
+  .lx-term .h { color: #6b7280; } .lx-term .c { color: #6ee7b7; font-weight: 700; } .lx-term .ok { color: #6b7280; } .lx-term .bad { color: #fca5a5; }
+
+  /* processes */
+  .al-pipe { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: .6rem; }
+  .al-stage { border: 1px solid var(--bd); border-radius: .6rem; padding: .65rem; background: rgba(255,255,255,.02); position: relative; }
+  .al-stage.running { border-color: var(--ok); box-shadow: 0 0 0 1px rgba(16,185,129,.4); }
+  .al-stage.error { border-color: rgba(239,68,68,.5); }
+  .al-stage .sn { font-weight: 800; font-size: .82rem; display: flex; align-items: center; gap: .4rem; }
+  .al-stage .sa { font-size: .66rem; color: var(--dim); margin: .15rem 0 .4rem; min-height: 1.8em; }
+  .al-stage .sm { font-size: .68rem; color: var(--mu); display: flex; justify-content: space-between; gap: .3rem; }
+  .al-stage .snote { font-size: .7rem; margin-top: .3rem; color: var(--tx); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sd { width: 8px; height: 8px; border-radius: 50%; background: #52525b; flex-shrink: 0; }
+  .sd.ok { background: var(--ok); } .sd.running { background: var(--ok); animation: al-pulse 1s infinite; } .sd.error { background: var(--bad); }
+  .al-ev { display: flex; gap: .6rem; padding: .4rem 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: .78rem; }
+  .al-ev .t { color: var(--dim); font-family: ui-monospace, Menlo, monospace; font-size: .7rem; white-space: nowrap; }
+  .al-ev .k { font-size: .62rem; font-weight: 800; text-transform: uppercase; padding: .05rem .35rem; border-radius: .25rem; background: rgba(255,255,255,.06); color: var(--mu); height: fit-content; white-space: nowrap; }
+  .k-error, .k-guard { color: #fca5a5 !important; background: rgba(239,68,68,.12) !important; }
+  .k-surprise, .k-pull { color: #fcd34d !important; background: rgba(245,158,11,.12) !important; }
+  .k-message, .k-reply, .k-wake { color: #a5b4fc !important; background: rgba(99,102,241,.14) !important; }
+  .k-start, .k-stop, .k-rest, .k-budget { color: #6ee7b7 !important; background: rgba(16,185,129,.12) !important; }
+
+  /* list rows (journal, ticks, files) */
+  .al-li { padding: .65rem .2rem; border-bottom: 1px solid rgba(255,255,255,.05); cursor: pointer; }
+  .al-li:hover { background: rgba(99,102,241,.05); }
+  .al-li.sel { background: rgba(99,102,241,.1); }
+  .al-li.err { border-left: 3px solid var(--bad); padding-left: .5rem; }
+  .al-li .top { display: flex; justify-content: space-between; gap: .5rem; font-size: .72rem; color: var(--dim); }
+  .al-li .body { font-size: .83rem; margin-top: .2rem; line-height: 1.45; }
+  .al-li .body.clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* forms */
+  .al-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem 1rem; }
+  .al-form label { display: block; font-size: .72rem; font-weight: 700; color: var(--mu); margin-bottom: .25rem; }
+  .al-form .help { font-size: .66rem; color: var(--dim); margin-top: .2rem; }
+  .al-form .full { grid-column: 1 / -1; }
+  @media (max-width: 640px) { .al-form { grid-template-columns: minmax(0, 1fr); } }
+  select.al-input option { background: #1a1a24; }
+
+  /* modal & toast */
+  .al-modal { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,.65); backdrop-filter: blur(3px); align-items: center; justify-content: center; padding: 1rem; }
+  .al-modal.open { display: flex; }
+  .al-modal-box { background: var(--card); border: 1px solid var(--bd); border-radius: .85rem; width: min(820px, 100%); max-height: 88vh; overflow-y: auto; padding: 1.1rem; }
+  .al-modal-box h4 { margin: 0 0 .75rem; display: flex; justify-content: space-between; gap: .5rem; font-size: 1rem; }
+  .al-x { background: none; border: none; color: var(--dim); font-size: 1.3rem; cursor: pointer; }
+  .al-toast { position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 1100; padding: .7rem 1rem; border-radius: .6rem; font-size: .84rem; font-weight: 600; background: var(--card); border: 1px solid var(--bd); box-shadow: 0 8px 28px rgba(0,0,0,.4); transform: translateY(150%); transition: transform .25s; }
+  .al-toast.show { transform: translateY(0); }
+  .al-toast.ok { border-color: rgba(16,185,129,.5); } .al-toast.error { border-color: rgba(239,68,68,.5); }
+
+  /* inbox (shared inbox tool) */
+  .inbox-entry { display: flex; gap: .75rem; padding: .8rem 1rem; border-bottom: 1px solid rgba(255,255,255,.05); cursor: pointer; }
+  .inbox-entry:hover { background: rgba(99,102,241,.05); }
+  .inbox-entry.unread { border-left: 3px solid var(--acc); } .inbox-entry.pending { border-left: 3px solid var(--warn); }
+  .inbox-entry-body { flex: 1; min-width: 0; }
+  .inbox-subject { font-size: .86rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inbox-preview { font-size: .74rem; color: var(--dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .inbox-meta { font-size: .67rem; color: #52525b; margin-top: .2rem; display: flex; gap: .6rem; flex-wrap: wrap; }
+  .inbox-priority { padding: 0 .35rem; border-radius: .25rem; font-size: .6rem; font-weight: 800; text-transform: uppercase; }
+  .inbox-priority.urgent { background: rgba(239,68,68,.15); color: #fca5a5; } .inbox-priority.high { background: rgba(245,158,11,.15); color: #fcd34d; }
+  .inbox-priority.low { color: var(--dim); }
+  .inbox-filter-bar { display: flex; gap: .4rem; padding: .7rem 1rem; border-bottom: 1px solid var(--bd); flex-wrap: wrap; }
+  .inbox-filter-btn { padding: .22rem .7rem; border-radius: 999px; font-size: .72rem; font-weight: 700; background: rgba(255,255,255,.04); color: var(--dim); border: 1px solid transparent; cursor: pointer; }
+  .inbox-filter-btn.active { background: rgba(99,102,241,.15); color: #a5b4fc; border-color: rgba(99,102,241,.3); }
+</style>
+
+<div class="al">
+  <div class="al-head">
+    <div>
+      <h1 class="al-title"><span style="color:var(--acc)">&infin;</span> AGI Loop</h1>
+      <div class="al-sub">A continuously running inner world &mdash; it senses, predicts, attends, and acts between conversations.</div>
+    </div>
+    <div class="al-row">
+      {% for l in loops %}<a class="al-chip" href="/agi-loop?loop={{ l }}" style="text-decoration:none;{% if l == loop %}border-color:var(--acc);color:var(--acc);font-weight:700;{% endif %}">{{ l }}</a>{% endfor %}
+      <span class="al-chip" id="hdr-agent">{{ config.agent }}</span>
+      <span class="al-chip" id="hdr-model">model: {{ config.model or 'profile default' }}</span>
+      <span class="al-pill ph-idle" id="hdr-phase"><span class="al-dot"></span><span id="hdr-phase-text">idle</span></span>
+    </div>
+  </div>
+
+  <!-- Vitals: visible on every tab -->
+  <div class="al-vitals">
+    <div class="al-vital"><div class="k">Stage</div><div class="v al-mono" id="v-stage">&mdash;</div></div>
+    <div class="al-vital"><div class="k">Tick</div><div class="v" id="v-tick">0</div></div>
+    <div class="al-vital"><div class="k">Energy</div><div class="v" id="v-energy">&mdash;</div><div class="al-bar"><i id="v-energy-bar" style="width:0"></i></div></div>
+    <div class="al-vital"><div class="k">Mood</div><div class="v" id="v-mood">&mdash;</div></div>
+    <div class="al-vital"><div class="k">Focus</div><div class="v" id="v-focus">&mdash;</div></div>
+    <div class="al-vital"><div class="k">At the door</div><div class="v" id="v-door">0</div></div>
+    <div class="al-vital"><div class="k">Next wake</div><div class="v al-mono" id="v-wake">&mdash;</div></div>
+  </div>
+
+  <div class="al-tabs" id="al-tabs">
+    <button class="al-tab active" data-tab="overview">Overview</button>
+    <button class="al-tab" data-tab="world">Field</button>
+    <button class="al-tab" data-tab="predictions">Predictions</button>
+    <button class="al-tab" data-tab="processes">Processes</button>
+    <button class="al-tab" data-tab="workbench">Workbench</button>
+    <button class="al-tab" data-tab="linux">Linux</button>
+    <button class="al-tab" data-tab="inbox">Inbox <span class="al-badge zero" id="inbox-tab-badge">0</span></button>
+    <button class="al-tab" data-tab="journal">Journal</button>
+    <button class="al-tab" data-tab="ticks">Ticks</button>
+    <button class="al-tab" data-tab="config">Configuration</button>
+  </div>
+  <select class="al-tabselect" id="al-tabselect" aria-label="Section">
+    <option value="overview">Overview</option><option value="world">Field</option>
+    <option value="predictions">Predictions</option><option value="processes">Processes</option>
+    <option value="workbench">Workbench</option><option value="linux">Linux</option><option value="inbox">Inbox</option>
+    <option value="journal">Journal</option><option value="ticks">Ticks</option>
+    <option value="config">Configuration</option>
+  </select>
+
+  <!-- ══ Overview ══════════════════════════════════════════════ -->
+  <section class="al-panel active" id="panel-overview">
+    <div class="al-card" style="margin-bottom:1rem">
+      <h3>Controls <span class="al-small al-dim" id="ov-since"></span></h3>
+      <div class="al-row" style="margin-top:.5rem">
+        <button class="al-btn b-go" id="btn-start" onclick="loopAction('start')">&#9654; Start</button>
+        <button class="al-btn b-pause" id="btn-pause" onclick="loopAction('pause')">&#10074;&#10074; Pause</button>
+        <button class="al-btn b-acc" id="btn-resume" onclick="loopAction('resume')">&#8635; Resume</button>
+        <button class="al-btn b-acc" id="btn-wake" onclick="loopAction('wake')" title="Wake it now instead of waiting">&#9200; Wake now</button>
+        <button class="al-btn b-stop" id="btn-stop" onclick="loopAction('stop')">&#9632; Stop</button>
+        <span class="al-small al-muted" id="ov-stop-reason"></span>
+      </div>
+      <div id="ov-noconn" class="al-small" style="display:none;margin-top:.75rem;color:#fcd34d">&#9888; No LLM connection resolves for this agent. Pick one in <a href="#" onclick="switchTab('config');return false" style="text-decoration:underline">Configuration</a> or add one under <a href="/connections" style="text-decoration:underline">Connections</a>.</div>
+    </div>
+
+    <div class="al-grid g-main">
+      <div class="al-card">
+        <h3>At the door <span class="al-small al-dim">messages wake the loop</span></h3>
+        <p class="hint">Speak to the running mind. Your message lands at its door; it decides what to do with it and can reply.</p>
+        <div class="al-convo" id="convo"><div class="al-empty">No conversation yet.</div></div>
+        <div id="convo-files" style="display:none;gap:.4rem;flex-wrap:wrap;margin-top:.6rem"></div>
+        <div style="display:flex;gap:.5rem;margin-top:.75rem">
+          <button class="al-btn" id="convo-attach" type="button" title="Attach documents — text, soul scripts, a whole project as .zip. Long pasted text becomes a .txt automatically.">&#128206;</button>
+          <textarea class="al-input" id="convo-input" rows="1" style="resize:vertical;max-height:40vh" placeholder="Leave a message at the door… (Shift+Enter for a new line; paste as much as you like)" maxlength="100000" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendMessage();}"></textarea>
+          <button class="al-btn b-acc" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+      <div class="al-grid" style="align-content:start">
+        <div class="al-card">
+          <h3>Latest thought <span class="al-small al-dim" id="ov-last-meta"></span></h3>
+          <div id="ov-last" class="al-small al-muted">Nothing yet.</div>
+        </div>
+        <div class="al-card">
+          <h3>Session</h3>
+          <dl class="al-kv" id="ov-session"></dl>
+        </div>
+        <div class="al-card">
+          <h3>Recent events</h3>
+          <div id="ov-events" class="al-scroll" style="max-height:220px"><div class="al-empty">Quiet.</div></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ Field ═════════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-world">
+    <div class="al-fieldwrap">
+      <div class="al-card">
+        <h3>Field <span class="al-small al-dim" id="w-cap"></span></h3>
+        <p class="hint">Focus sits at the center; everything else is placed by how related it is to it &mdash; close, around, or at the edge. Things are grouped around the circle by where they came from. Size is salience; red is tension, green is warmth; a white ring means held. Click anything for its internals.</p>
+        <svg class="al-radar" id="w-radar" viewBox="0 0 400 400" role="img" aria-label="Field around the current focus"></svg>
+        <div class="al-small al-muted" id="w-pulled" style="margin-top:.6rem;text-align:center"></div>
+      </div>
+      <div class="al-grid" style="align-content:start">
+        <div class="al-card">
+          <h3>What's in view <label class="al-small al-muted"><input type="checkbox" id="w-perceived" checked onchange="renderWorld()"> as it sees it</label></h3>
+          <div class="al-hud" id="w-hud"></div>
+          <div class="al-ringlist" id="w-rings"></div>
+        </div>
+        <div class="al-card">
+          <h3>Mood <span class="al-small al-dim">read off the field, not chosen</span></h3>
+          <div class="al-moodword" id="w-mood">&mdash;</div>
+          <div class="al-small al-muted" id="w-mood-phrase" style="min-height:1.2em"></div>
+          <div class="al-small al-dim" style="margin-top:.6rem">Valence (tension &larr;&rarr; warmth)</div>
+          <div class="al-axis"><b id="w-val" style="left:50%"></b></div>
+          <div class="al-small al-dim">Arousal (recent surprise)</div>
+          <div class="al-axis ar"><b id="w-aro" style="left:0%"></b></div>
+          <div id="w-sources"></div>
+        </div>
+        <div class="al-card">
+          <h3>Capacity</h3>
+          <div class="al-bar" style="height:10px"><i id="w-cap-bar" style="width:0"></i></div>
+          <p class="hint" style="margin-top:.5rem">When full, the least salient, least related things compress (full &rarr; gist &rarr; trace) and then slip away.</p>
+          <div class="al-small al-muted" style="font-weight:700;margin-bottom:.3rem">Recently faded</div>
+          <div id="w-faded" class="al-scroll" style="max-height:180px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="al-card" style="margin-top:1rem">
+      <h3>What it sees <span class="al-small al-dim">the exact text the model saw through on the last tick</span></h3>
+      <pre class="al-pre" id="w-text">The loop hasn't seen anything yet.</pre>
+    </div>
+  </section>
+
+  <!-- ══ Predictions ═══════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-predictions">
+    <div class="al-card">
+      <h3>Beliefs per channel</h3>
+      <p class="hint">Each signal carries a running prediction. The gap between prediction and observation is surprise (0&ndash;1). Surprise speeds learning, adds salience where it happened, and can pull attention.</p>
+      <div class="al-tablewrap"><table class="al-table">
+        <thead><tr><th>Signal</th><th>Source</th><th>Expects</th><th>Last seen</th><th>Surprise</th><th>History</th><th>n</th></tr></thead>
+        <tbody id="p-rows"><tr><td colspan="7" class="al-empty">No observations yet.</td></tr></tbody>
+      </table></div>
+    </div>
+    <div class="al-card" style="margin-top:1rem">
+      <h3>The agent's own expectations</h3>
+      <p class="hint">Top-down predictions the agent made with <span class="al-mono">attend(expect)</span>. Met ones leave warmth; broken ones arrive as surprise.</p>
+      <div class="al-tablewrap"><table class="al-table">
+        <thead><tr><th>Expects</th><th>Where</th><th>By</th><th>Status</th></tr></thead>
+        <tbody id="p-exp"><tr><td colspan="4" class="al-empty">None yet.</td></tr></tbody>
+      </table></div>
+    </div>
+  </section>
+
+  <!-- ══ Processes ═════════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-processes">
+    <div class="al-card">
+      <h3>Pipeline <span class="al-small al-dim">one tick, stage by stage</span></h3>
+      <div class="al-pipe" id="pr-stages"></div>
+    </div>
+    <div class="al-grid g2" style="margin-top:1rem">
+      <div class="al-card">
+        <h3>Sensory channels</h3>
+        <p class="hint">Signals the agent receives but cannot author.</p>
+        <div id="pr-channels"><div class="al-empty">Not sensed yet.</div></div>
+      </div>
+      <div class="al-card">
+        <h3>Guards</h3>
+        <p class="hint">Metacognitive limits: repetition forces rest; persistent errors stop the loop.</p>
+        <dl class="al-kv" id="pr-guards"></dl>
+      </div>
+    </div>
+    <div class="al-card" style="margin-top:1rem">
+      <h3>Event log
+        <select class="al-input" id="ev-filter" style="width:auto;padding:.25rem .5rem;font-size:.72rem" onchange="loadEvents()">
+          <option value="">all</option><option>message</option><option>reply</option><option>wake</option><option>pull</option>
+          <option>surprise</option><option>fade</option><option>attend</option><option>expect</option><option>resolve</option>
+          <option>rest</option><option>guard</option><option>error</option><option>budget</option><option>start</option><option>stop</option>
+        </select></h3>
+      <div id="pr-events" class="al-scroll" style="max-height:480px"><div class="al-empty">No events.</div></div>
+    </div>
+  </section>
+
+  <!-- ══ Workbench ═════════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-workbench">
+    <div class="al-grid g-main">
+      <div class="al-card">
+        <h3>Bench <button class="al-btn al-btn-sm" onclick="loadWorkbench()">&#8635;</button></h3>
+        <p class="hint">The agent's private making-space. Edits you make to these files show up to it as surprise.</p>
+        <div id="wb-files" class="al-scroll" style="max-height:240px"><div class="al-empty">Empty bench.</div></div>
+        <pre class="al-pre" id="wb-view" style="margin-top:.75rem;max-height:420px;overflow:auto;display:none"></pre>
+      </div>
+      <div class="al-card">
+        <h3>Reflections</h3>
+        <div id="wb-refl" class="al-scroll" style="max-height:640px"><div class="al-empty">None yet.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ Linux (the agent's own machine, read-only) ══════════════ -->
+  <section class="al-panel" id="panel-linux">
+    <div class="lx-strip">
+      <span><span class="lx-dot" id="lx-dot"></span><span id="lx-state">checking…</span></span>
+      <span id="lx-disk"></span><span id="lx-mem"></span><span id="lx-up"></span>
+      <div class="lx-seg" role="tablist">
+        <button class="active" data-lx="files" onclick="lxView('files')">Files</button>
+        <button data-lx="terminal" onclick="lxView('terminal')">Terminal</button>
+      </div>
+    </div>
+    <div id="lx-off" class="al-card" style="display:none"><div class="al-empty" id="lx-off-msg"></div></div>
+    <div id="lx-pane-files" class="lx-files">
+      <div class="al-card">
+        <h3>Her home <button class="al-btn al-btn-sm" onclick="lxLoadTree()">&#8635;</button></h3>
+        <p class="hint">/home/{{ {'k_os': 'kos'}.get(loop, 'supervisor') }} · folders marked <span class="lx-node" style="display:inline;padding:0"><span class="rd">no README</span></span> haven't been explained yet.</p>
+        <div class="lx-tree" id="lx-tree"><div class="al-empty">Loading…</div></div>
+      </div>
+      <div class="al-card">
+        <div class="lx-viewhead"><span id="lx-path">README.md</span><span id="lx-meta"></span></div>
+        <div id="lx-view"><div class="al-empty">Pick a folder or file.</div></div>
+      </div>
+    </div>
+    <div id="lx-pane-terminal" style="display:none">
+      <div class="al-row" style="justify-content:space-between;margin-bottom:.6rem;font-size:.76rem;color:var(--mu)">
+        <span>Every command she runs, live. Read-only.</span>
+        <label style="cursor:pointer"><input type="checkbox" id="lx-follow" checked> follow</label>
+      </div>
+      <div class="lx-term" id="lx-term">Loading…</div>
+    </div>
+  </section>
+
+  <!-- ══ Inbox (shared inbox tool) ═════════════════════════════ -->
+  <section class="al-panel" id="panel-inbox">
+    <div class="al-grid g-main">
+      <div class="al-card" style="padding:0;overflow:hidden">
+        <div class="inbox-filter-bar">
+          <button class="inbox-filter-btn active" data-f="all">All</button>
+          <button class="inbox-filter-btn" data-f="unread">Unread</button>
+          <button class="inbox-filter-btn" data-f="task">Tasks</button>
+          <button class="inbox-filter-btn" data-f="message">Messages</button>
+          <button class="inbox-filter-btn" data-f="warning">Warnings</button>
+          <span style="flex:1"></span>
+          <button class="inbox-filter-btn" onclick="inboxRefresh()">&#8635; Refresh</button>
+        </div>
+        <div id="inbox-list" class="al-scroll" style="max-height:520px"><div class="al-empty">No inbox entries.</div></div>
+      </div>
+      <div class="al-grid" style="align-content:start">
+        <div class="al-card" id="inbox-detail" style="display:none">
+          <h3><span id="inbox-d-type"></span><button class="al-x" onclick="inboxClose()">&times;</button></h3>
+          <div style="font-weight:800;margin:.25rem 0 .5rem" id="inbox-d-subject"></div>
+          <div class="al-small" style="white-space:pre-wrap;line-height:1.55" id="inbox-d-body"></div>
+          <div class="al-small al-dim" style="margin-top:.6rem" id="inbox-d-meta"></div>
+          <div class="al-row" style="margin-top:.75rem" id="inbox-d-actions"></div>
+        </div>
+        <div class="al-card">
+          <h3>Tool requests <span class="al-badge" id="tool-req-count">0</span></h3>
+          <p class="hint">One line from a mind asking for a tool it doesn't have. Shared by every loop; asking wakes nobody.</p>
+          <div id="tool-requests" class="al-scroll" style="max-height:320px"><div class="al-empty">No requests yet.</div></div>
+        </div>
+        <div class="al-card">
+          <h3>Add to inbox</h3>
+          <p class="hint">Pending tasks appear at the loop's door until done.</p>
+          <div class="al-grid" style="gap:.5rem">
+            <select class="al-input" id="ib-action"><option value="add_task">Task for the agent</option><option value="send">Message</option></select>
+            <input class="al-input" id="ib-subject" placeholder="Task or subject" maxlength="120">
+            <textarea class="al-input" id="ib-body" placeholder="Body (messages only)" maxlength="2000"></textarea>
+            <select class="al-input" id="ib-priority"><option>normal</option><option>low</option><option>high</option><option>urgent</option></select>
+            <button class="al-btn b-acc" onclick="inboxSend()">Add</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ Journal ═══════════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-journal">
+    <div class="al-card">
+      <h3>Journal <span class="al-row"><span class="al-small al-dim" id="jn-count"></span>
+        <button class="al-btn al-btn-sm" onclick="loadJournal()">&#8635;</button>
+        <button class="al-btn al-btn-sm b-danger" onclick="clearJournal()">Clear</button></span></h3>
+      <p class="hint">One line per tick: what it did, how it felt, where its attention was.</p>
+      <div id="jn-list" class="al-scroll" style="max-height:640px"><div class="al-empty">Empty.</div></div>
+    </div>
+  </section>
+
+  <!-- ══ Ticks ═════════════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-ticks">
+    <div class="al-grid g-main">
+      <div class="al-card">
+        <h3>Ticks <button class="al-btn al-btn-sm" onclick="loadTicks()">&#8635;</button></h3>
+        <div class="al-tablewrap al-scroll" style="max-height:640px"><table class="al-table">
+          <thead><tr><th>#</th><th>Time</th><th>Woke</th><th>Focus</th><th>Mood</th><th>Tools</th><th>Tokens</th><th>Latency</th></tr></thead>
+          <tbody id="tk-rows"><tr><td colspan="8" class="al-empty">No ticks yet.</td></tr></tbody>
+        </table></div>
+      </div>
+      <div class="al-card">
+        <h3>Tick detail</h3>
+        <div id="tk-detail" class="al-small al-muted">Select a tick.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ══ Configuration ═════════════════════════════════════════ -->
+  <section class="al-panel" id="panel-config">
+    <div class="al-card">
+      <h3>Configuration <span class="al-small al-dim">one model &mdash; no router</span></h3>
+      <div class="al-form" id="cfg-form">
+        <div class="full al-small al-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.06em">Identity &amp; model</div>
+        <div><label>Agent</label><select class="al-input" name="agent">{% for a in agents %}<option value="{{ a }}">{{ a }}</option>{% endfor %}</select></div>
+        <div><label>Temperature</label><input class="al-input" name="temperature" type="number" step="0.05" min="0" max="2"></div>
+        <div><label>Connection</label><select class="al-input" name="connection_id" onchange="fillModels()"><option value="">Agent default</option>{% for c in connections %}<option value="{{ c.id }}">{{ c.name }} ({{ c.provider }})</option>{% endfor %}</select></div>
+        <div><label>Model</label><input class="al-input" name="model" list="cfg-models" placeholder="profile default"><datalist id="cfg-models"></datalist><div class="help" id="cfg-resolved"></div></div>
+
+        <div class="full al-small al-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-top:.5rem">Cadence (wall time)</div>
+        <div><label>Base interval (s)</label><input class="al-input" name="base_interval_seconds" type="number" min="5"><div class="help">Low energy slows it; surprise speeds it up.</div></div>
+        <div><label>Min / max interval (s)</label><div style="display:flex;gap:.5rem"><input class="al-input" name="min_interval_seconds" type="number" min="5"><input class="al-input" name="max_interval_seconds" type="number" min="5"></div></div>
+        <div><label>Max rest (min)</label><input class="al-input" name="max_rest_minutes" type="number" min="1"><div class="help">Longest rest the agent can choose.</div></div>
+
+        <div class="full al-small al-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-top:.5rem">Energy</div>
+        <div><label>Daily token budget</label><input class="al-input" name="daily_token_budget" type="number" min="1000" step="1000"><div class="help">Its energy. When spent, it sleeps until UTC midnight.</div></div>
+        <div><label>Daily cost cap (USD)</label><input class="al-input" name="daily_cost_cap" type="number" min="0" step="0.1"><div class="help">0 = tokens only.</div></div>
+        <div><label>Max tokens per tick</label><input class="al-input" name="max_tokens_per_tick" type="number" min="1000" step="1000"></div>
+
+        <div class="full al-small al-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-top:.5rem">Per tick</div>
+        <div><label>Max model steps</label><input class="al-input" name="max_steps_per_tick" type="number" min="1"></div>
+        <div><label>Max tool calls</label><input class="al-input" name="max_tool_calls_per_tick" type="number" min="0"></div>
+        <div><label>Earlier ticks carried</label><input class="al-input" name="history_window" type="number" min="0"></div>
+
+        <div class="full al-small al-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-top:.5rem">Inner world</div>
+        <div><label>Capacity (chars)</label><input class="al-input" name="capacity_chars" type="number" min="600" step="100"><div class="help">How much the field holds before things compress and fade.</div></div>
+        <div><label>Capture threshold</label><input class="al-input" name="capture_threshold" type="number" min="0" max="1" step="0.05"><div class="help">Salience needed to pull attention involuntarily.</div></div>
+
+        <div class="full al-small al-muted" style="font-weight:800;text-transform:uppercase;letter-spacing:.06em;margin-top:.5rem">Guards</div>
+        <div><label>Identical ticks before forced rest</label><input class="al-input" name="stale_streak_limit" type="number" min="0"></div>
+        <div><label>Forced rest (min) / max per session</label><div style="display:flex;gap:.5rem"><input class="al-input" name="guard_rest_minutes" type="number" min="1"><input class="al-input" name="max_guard_rests" type="number" min="0"></div></div>
+        <div><label>Errors in a row before stop</label><input class="al-input" name="error_streak_limit" type="number" min="0"></div>
+        <div><label>Ticks circling before the body notices</label><input class="al-input" name="rumination_ticks" type="number" min="1"></div>
+        <div class="full"><label><input type="checkbox" name="workbench"> Workbench enabled</label></div>
+      </div>
+      <div class="al-row" style="margin-top:1rem;justify-content:space-between">
+        <button class="al-btn b-acc" onclick="saveConfig()">Save configuration</button>
+        <button class="al-btn b-danger" onclick="resetWorld()" title="Clears items, beliefs, and attention. Logs and workbench are kept.">Reset the field</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="al-modal" id="al-modal" onclick="if(event.target===this)closeModal()">
+  <div class="al-modal-box"><h4><span id="al-modal-title"></span><button class="al-x" onclick="closeModal()">&times;</button></h4><div id="al-modal-body"></div></div>
+</div>
+<div class="al-toast" id="al-toast"></div>
+
+<script src="/static/attach.js"></script>
+<script>
+const AL = {
+  config: {{ config|tojson }},
+  connections: {{ connections|tojson }},
+  status: null, world: null, tab: 'overview', ticks: [], inbox: [], inboxFilter: 'all',
+  wakeAt: null,
+};
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+function $(id) { return document.getElementById(id); }
+function ago(iso) {
+  if (!iso) return '';
+  const s = Math.max(0, (Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 60) return Math.round(s) + 's ago';
+  if (s < 3600) return Math.round(s / 60) + 'm ago';
+  if (s < 86400) return (s / 3600).toFixed(1) + 'h ago';
+  return Math.round(s / 86400) + 'd ago';
+}
+function hms(sec) {
+  sec = Math.max(0, Math.round(sec));
+  const h = Math.floor(sec / 3600), m = Math.floor(sec % 3600 / 60), s = sec % 60;
+  return (h ? h + ':' : '') + String(m).padStart(h ? 2 : 1, '0') + ':' + String(s).padStart(2, '0');
+}
+function tok(n) { n = n || 0; return n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); }
+function clock(iso) { return iso ? new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'}) : ''; }
+function toast(msg, type) {
+  const t = $('al-toast'); t.textContent = msg; t.className = 'al-toast show ' + (type || 'ok');
+  clearTimeout(t._h); t._h = setTimeout(() => t.className = 'al-toast', 2600);
+}
+const LOOP_ID = {{ loop|tojson }};
+async function api(path, opts) {
+  path += (path.includes('?') ? '&' : '?') + 'loop=' + encodeURIComponent(LOOP_ID);
+  const r = await fetch(path, opts);
+  let data = {};
+  try { data = await r.json(); } catch (e) {}
+  if (!r.ok && !data.reason) data.reason = data.error || ('HTTP ' + r.status);
+  data._ok = r.ok;
+  return data;
+}
+function openModal(title, html) { $('al-modal-title').textContent = title; $('al-modal-body').innerHTML = html; $('al-modal').classList.add('open'); }
+function closeModal() { $('al-modal').classList.remove('open'); }
+
+/* ── Tabs ─────────────────────────────────────────── */
+function switchTab(id) {
+  AL.tab = id;
+  document.querySelectorAll('.al-tab').forEach(b => b.classList.toggle('active', b.dataset.tab === id));
+  document.querySelectorAll('.al-panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + id));
+  $('al-tabselect').value = id;
+  try { localStorage.setItem('agiLoopTab', id); } catch (e) {}
+  refreshTab(true);
+}
+document.querySelectorAll('.al-tab').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+$('al-tabselect').addEventListener('change', e => switchTab(e.target.value));
+
+function refreshTab(force) {
+  const t = AL.tab;
+  if (t === 'overview') { loadConversation(); loadEvents(); }
+  else if (t === 'world') loadWorld();
+  else if (t === 'predictions') loadPredictions();
+  else if (t === 'processes') { renderProcesses(); loadEvents(); }
+  else if (t === 'workbench' && force) loadWorkbench();
+  else if (t === 'linux') lxRefresh(force);
+  else if (t === 'inbox' && force) { inboxRefresh(); loadToolRequests(); }
+  else if (t === 'journal' && force) loadJournal();
+  else if (t === 'ticks' && force) loadTicks();
+}
+
+/* ── Tool requests ───────────────────────────────── */
+async function loadToolRequests() {
+  const d = await api('/api/agi-loop/tool-requests');
+  const reqs = d.requests || [];
+  $('tool-req-count').textContent = reqs.filter(r => r.status !== 'done').length;
+  $('tool-requests').innerHTML = reqs.length ? reqs.slice(0, 30).map(r => {
+    const done = r.status === 'done';
+    return `<div class="al-small" style="padding:.45rem 0;border-bottom:1px solid var(--bd);${done ? 'opacity:.5' : ''}">`
+      + `<b>${esc(r.agent)}</b> <span class="al-dim">tick ${esc(r.tick)} · ${esc((r.ts || '').slice(0, 16).replace('T', ' '))} UTC</span>`
+      + `<div style="margin:.2rem 0;white-space:pre-wrap">${esc(r.text)}</div>`
+      + (done ? '<span class="al-dim">done</span>'
+              : `<button class="al-btn" onclick="toolRequestDone('${esc(r.id)}')">Mark done</button>`)
+      + '</div>';
+  }).join('') : '<div class="al-empty">No requests yet.</div>';
+}
+async function toolRequestDone(id) {
+  const d = await api('/api/agi-loop/tool-requests/' + encodeURIComponent(id) + '/done', { method: 'POST' });
+  if (d._ok) { toast('Marked done'); loadToolRequests(); } else toast(d.reason || 'Failed', 'err');
+}
+
+/* ── Status / vitals ──────────────────────────────── */
+async function loadStatus() {
+  const s = await api('/api/agi-loop/status');
+  if (!s._ok) return;
+  AL.status = s;
+  AL.wakeAt = s.next_wake_in != null ? Date.now() + s.next_wake_in * 1000 : null;
+  const phase = s.paused && s.running ? 'paused' : (s.phase || 'idle');
+  $('hdr-phase').className = 'al-pill ph-' + phase;
+  $('hdr-phase-text').textContent = phase + (s.resting ? ' (rest)' : '');
+  $('hdr-agent').textContent = s.agent;
+  $('hdr-model').textContent = 'model: ' + s.model;
+  $('v-stage').textContent = s.stage || (s.running ? '—' : 'off');
+  $('v-tick').textContent = s.tick;
+  const e = s.budget.energy;
+  $('v-energy').textContent = Math.round(e * 100) + '%';
+  const eb = $('v-energy-bar'); eb.style.width = (e * 100) + '%';
+  eb.style.background = e < 0.2 ? 'var(--bad)' : e < 0.5 ? 'var(--warn)' : 'var(--ok)';
+  $('v-mood').textContent = (s.mood && s.mood.word) || '—';
+  $('v-focus').textContent = s.focus_name || '—';
+  $('v-door').textContent = s.waiting + (s.queue ? ' (+' + s.queue + ')' : '');
+  $('btn-start').disabled = s.running;
+  $('btn-stop').disabled = !s.running;
+  $('btn-pause').disabled = !s.running || s.paused;
+  $('btn-resume').disabled = !s.paused;
+  $('btn-wake').disabled = !s.running || s.paused;
+  $('ov-since').textContent = s.running && s.started_at ? 'awake since ' + clock(s.started_at) : (s.stopped_at ? 'stopped ' + ago(s.stopped_at) : '');
+  $('ov-stop-reason').textContent = !s.running && s.stop_reason ? 'Last stop: ' + s.stop_reason : '';
+  const b = s.budget;
+  $('ov-session').innerHTML = [
+    ['Ticks this session', s.session_ticks], ['Total ticks', s.tick],
+    ['Session tokens', tok(s.session_tokens)], ['Session cost', '$' + (s.session_cost || 0).toFixed(4)],
+    ['Today', tok(b.tokens) + ' / ' + tok(b.tokens_per_day) + ' tokens · $' + b.cost.toFixed(4)],
+    ['Budget resets in', hms(b.resets_in)],
+    ['Woke because', s.wake_reason || '—'],
+    ['Last error', s.last_error ? s.last_error.slice(0, 160) : 'none'],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+  if (AL.tab === 'processes') renderProcesses();
+}
+function tickWakeClock() {
+  $('v-wake').textContent = AL.wakeAt ? hms((AL.wakeAt - Date.now()) / 1000) : (AL.status && AL.status.running ? 'now' : '—');
+}
+
+async function loopAction(action) {
+  const r = await api('/api/agi-loop/' + action, {method: 'POST'});
+  if (r._ok && r.ok !== false) toast(r.message || (action + ' ✓'));
+  else toast(r.reason || 'Failed', 'error');
+  setTimeout(loadStatus, 250);
+}
+
+/* ── Overview ─────────────────────────────────────── */
+async function loadConversation() {
+  const r = await api('/api/agi-loop/conversation?limit=100');
+  const box = $('convo');
+  const msgs = r.messages || [];
+  const sig = msgs.length + ':' + (msgs.length ? msgs[msgs.length - 1].id || msgs[msgs.length - 1].ts : '');
+  if (!msgs.length) { box.innerHTML = '<div class="al-empty">No conversation yet. Messages you send arrive at its door.</div>'; }
+  else if (box._sig !== sig) {   // nothing new → leave the DOM (and your place in it) alone
+    const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;
+    box.innerHTML = msgs.map(m => `<div class="al-msg ${m.role === 'agent' ? 'ag' : 'op'}">${esc(m.text)}<div class="meta">${esc(m.sender || m.role)} · ${clock(m.ts)}</div></div>`).join('');
+    if (atBottom || !box._seen) box.scrollTop = box.scrollHeight;
+    box._seen = true;
+  }
+  box._sig = sig;
+  const t = await api('/api/agi-loop/ticks?limit=1&brief=1&with_response=1');
+  const last = (t.ticks || [])[0];
+  if (last) {
+    $('ov-last-meta').textContent = 'tick ' + last.tick + ' · ' + ago(last.time);
+    const tools = (last.tool_calls || []).map(c => `<span class="al-chip ${c.ok ? '' : 'bad'}">${esc(c.tool)}</span>`).join(' ');
+    $('ov-last').innerHTML = (last.error ? `<div style="color:#fca5a5">${esc(last.error)}</div>` : '')
+      + `<div style="white-space:pre-wrap;color:var(--tx);font-size:.84rem;line-height:1.5">${esc(last.response || '(no words)')}</div>`
+      + (tools ? `<div class="al-row" style="margin-top:.5rem">${tools}</div>` : '');
+  }
+}
+const convoAttach = attachBox({input: $('convo-input'), bar: $('convo-files'), button: $('convo-attach'), onError: m => toast(m, 'error')});
+async function sendMessage() {
+  const inp = $('convo-input');
+  const text = inp.value.trim();
+  if (!text && !convoAttach.count()) return;
+  const files = await convoAttach.take();
+  const r = await api('/api/agi-loop/message', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({text, files})});
+  if (r.ok) { inp.value = ''; convoAttach.clear(); loadConversation(); toast(AL.status && AL.status.running ? 'At the door — it will wake' : 'Waiting at the door for when it starts'); }
+  else toast(r.reason || 'Failed', 'error');
+}
+
+/* ── Events ───────────────────────────────────────── */
+function eventRow(e) {
+  return `<div class="al-ev"><span class="t">${clock(e.ts)}</span><span class="k k-${esc(e.kind)}">${esc(e.kind)}</span><span>${esc(e.text)}</span></div>`;
+}
+async function loadEvents() {
+  const r = await api('/api/agi-loop/events?limit=300');
+  const raw = r.events || [];
+  const sig = raw.length + ':' + (raw.length ? raw[raw.length - 1].ts : '') + ':' + $('ev-filter').value + ':' + AL.tab;
+  if (AL._evSig === sig) return;   // nothing new → no redraw
+  AL._evSig = sig;
+  const evs = raw.slice().reverse();
+  if (AL.tab === 'overview') $('ov-events').innerHTML = evs.length ? evs.slice(0, 15).map(eventRow).join('') : '<div class="al-empty">Quiet.</div>';
+  const f = $('ev-filter').value;
+  const list = f ? evs.filter(e => e.kind === f) : evs;
+  $('pr-events').innerHTML = list.length ? list.map(eventRow).join('') : '<div class="al-empty">No events.</div>';
+}
+
+/* ── Field ──────────────────────────────────────── */
+async function loadWorld() {
+  const w = await api('/api/agi-loop/world');
+  if (!w._ok) return;
+  AL.world = w;
+  renderWorld();
+}
+const RING_BANDS = {close: [58, 110], around: [118, 152], edge: [160, 186]};
+function dotColor(it) {
+  if (it.valence < -0.05 && !it.resolved) return '#ef4444';
+  if (it.valence > 0.05) return '#10b981';
+  return '#a5b4fc';
+}
+function wrapText(t, n) {
+  const words = String(t || '').split(/\s+/), out = [];
+  let line = '';
+  for (const wd of words) {
+    if ((line + ' ' + wd).trim().length > n) { if (line) out.push(line); line = wd; } else line = (line + ' ' + wd).trim();
+    if (out.length === 2) break;
+  }
+  if (out.length < 3 && line) out.push(line);
+  return out.slice(0, 3);
+}
+function renderWorld() {
+  const w = AL.world;
+  if (!w) return;
+  const perceived = $('w-perceived').checked;
+  const field = w.items.filter(i => ['focus', 'close', 'around', 'edge'].includes(i.ring));
+  const gauges = w.items.filter(i => i.ring === 'gauge');
+  const alerts = w.items.filter(i => i.ring === 'alert');
+  const focus = field.find(i => i.ring === 'focus');
+
+  // Radar: sectors by source, radius by ring and relatedness.
+  const C = 200, others = field.filter(i => i.ring !== 'focus');
+  const sources = [...new Set(others.map(i => i.source))].sort();
+  const sector = 2 * Math.PI / Math.max(1, sources.length);
+  const parts = [];
+  ['close', 'around', 'edge'].forEach(r => {
+    const [, outer] = RING_BANDS[r];
+    parts.push(`<circle class="ring" cx="${C}" cy="${C}" r="${outer}"/><text class="ringlbl" x="${C + 4}" y="${C - outer + 11}">${r.toUpperCase()}</text>`);
+  });
+  sources.forEach((src, si) => {
+    const a = -Math.PI / 2 + sector * (si + 0.5);
+    const name = (others.find(i => i.source === src) || {}).source_name || src;
+    const x = C + 197 * Math.cos(a), y = C + 197 * Math.sin(a);
+    const anchor = Math.abs(Math.cos(a)) < 0.3 ? 'middle' : (Math.cos(a) > 0 ? 'end' : 'start');
+    parts.push(`<text class="srclbl" x="${x.toFixed(1)}" y="${(y + (Math.sin(a) > 0 ? -2 : 9)).toFixed(1)}" text-anchor="${anchor}">${esc(name)}</text>`);
+    const members = others.filter(i => i.source === src).sort((a, b) => b.sim - a.sim);
+    members.forEach((it, k) => {
+      const [inner, outer] = RING_BANDS[it.ring];
+      const sim = Math.max(0, Math.min(1, it.sim || 0));
+      const rad = outer - sim * (outer - inner) * 0.9;
+      const ang = a - sector / 2 + sector * (k + 1) / (members.length + 1);
+      const x2 = C + rad * Math.cos(ang), y2 = C + rad * Math.sin(ang);
+      const r = 3.5 + 7 * Math.min(1, it.salience);
+      const op = (0.35 + 0.65 * Math.min(1, it.salience)).toFixed(2);
+      const stroke = it.held ? ' stroke="#fff" stroke-width="2"' : '';
+      const fill = it.resolved ? `fill="none" stroke="${dotColor(it)}" stroke-width="1.5"` : `fill="${dotColor(it)}"${stroke}`;
+      parts.push(`<circle class="dot" cx="${x2.toFixed(1)}" cy="${y2.toFixed(1)}" r="${r.toFixed(1)}" ${fill} opacity="${op}" onclick="showItem('${esc(it.id)}')"><title>[${esc(it.id)}] ${esc(it.gist)} · ${it.ring} · sim ${it.sim}</title></circle>`);
+      if (it.ring === 'close') {
+        const right = Math.cos(ang) >= 0;
+        parts.push(`<text class="lbl" x="${(x2 + (right ? r + 3 : -r - 3)).toFixed(1)}" y="${(y2 + 3).toFixed(1)}" text-anchor="${right ? 'start' : 'end'}">${esc(it.gist.length > 24 ? it.gist.slice(0, 23) + '…' : it.gist)}</text>`);
+      }
+    });
+  });
+  const flabel = focus ? focus.gist : (w.focus.text ? '“' + w.focus.text + '”' : 'nothing in particular');
+  const fcol = focus ? dotColor(focus) : '#818cf8';
+  parts.push(`<circle cx="${C}" cy="${C}" r="46" fill="rgba(99,102,241,.14)" stroke="${fcol}" stroke-width="2"${focus ? ` class="dot" onclick="showItem('${esc(focus.id)}')"` : ''}/>`);
+  wrapText(flabel, 16).forEach((ln, k, arr) => parts.push(`<text class="focuslbl" x="${C}" y="${C + 4 + (k - (arr.length - 1) / 2) * 12}" text-anchor="middle">${esc(ln)}</text>`));
+  alerts.slice(0, 4).forEach((it, k) => {
+    const ang = -Math.PI / 2 - 0.45 + k * 0.3, x = C + 192 * Math.cos(ang), y = C + 192 * Math.sin(ang);
+    parts.push(`<circle class="dot" cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5.5" fill="#f59e0b" onclick="showItem('${esc(it.id)}')"><title>! ${esc(it.gist)}</title></circle>`);
+  });
+  $('w-radar').innerHTML = parts.join('');
+
+  // HUD + ring lists
+  $('w-hud').innerHTML = gauges.map(g => `<span class="al-chip" title="${esc(g.text)}">${esc(g.gist)}</span>`).join('') || '<span class="al-small al-dim">No readings yet.</span>';
+  const line = it => {
+    const cls = it.valence < -0.05 && !it.resolved ? 'tense' : it.valence > 0.05 ? 'warm' : '';
+    const text = perceived ? it.shown : it.text;
+    return `<button class="al-item ${cls} ${it.resolved ? 'resolved' : ''}" onclick="showItem('${esc(it.id)}')"><span class="lvl">${esc(it.source_name)} · ${esc(perceived ? it.detail : it.fidelity_name)}</span><span class="id">${esc(it.id)}</span>${it.held ? '◆ ' : ''}${esc(text)}</button>`;
+  };
+  const by = r => field.filter(i => i.ring === r).sort((a, b) => b.sim - a.sim);
+  let html = '<h5>Focus</h5>' + (focus ? `<div class="al-focuscard">${esc(focus.text)}</div>`
+    : `<div class="al-focuscard">${esc(flabel)}${w.focus.text ? ' <span class="al-dim">— a topic it is turning over</span>' : ''}</div>`);
+  const close = by('close'), around = by('around'), edge = by('edge');
+  if (close.length) html += '<h5>Close</h5>' + close.map(line).join('');
+  if (around.length) html += '<h5>Around</h5>' + around.map(line).join('');
+  if (edge.length) html += '<h5>Edge</h5><div class="al-edge">' + edge.map(it => `<a href="#" onclick="showItem('${esc(it.id)}');return false" style="color:inherit">${esc(perceived ? it.shown : it.gist)}</a>`).join(' · ') + '</div>';
+  if (alerts.length) html += '<h5>Alerts</h5>' + alerts.map(it => `<div class="al-alert" onclick="showItem('${esc(it.id)}')">! ${esc(it.gist)}</div>`).join('');
+  $('w-rings').innerHTML = html;
+
+  const pct = Math.round(100 * w.used / Math.max(1, w.capacity));
+  $('w-cap').textContent = w.used + ' / ' + w.capacity + ' chars';
+  const cb = $('w-cap-bar'); cb.style.width = Math.min(100, pct) + '%';
+  cb.style.background = pct > 90 ? 'var(--bad)' : pct > 70 ? 'var(--warn)' : 'var(--info)';
+  $('w-pulled').textContent = w.pulled ? `Focus was pulled from ${w.pulled.from} by: ${w.pulled.by}`
+    : `Focused ${w.deliberate ? 'by choice' : 'by default'} · ${w.dwell} tick(s) on this`;
+  const m = w.mood || {};
+  $('w-mood').textContent = m.word || '—';
+  $('w-mood-phrase').textContent = m.phrase || '';
+  $('w-val').style.left = (50 + 50 * (m.valence || 0)) + '%';
+  $('w-aro').style.left = (100 * (m.arousal || 0)) + '%';
+  const bs = m.by_source || {};
+  const maxv = Math.max(0.3, ...Object.values(bs).flatMap(v => [v.tension, v.harmony]));
+  $('w-sources').innerHTML = Object.keys(bs).length ? '<div class="al-small al-dim" style="margin-top:.2rem">Where it is felt (tension · warmth)</div>' + Object.entries(bs).map(([k, v]) =>
+    `<div class="al-tbar"><span>${esc(k)}</span><div class="al-bar"><i style="width:${100 * v.tension / maxv}%;background:var(--bad)"></i></div><div class="al-bar"><i style="width:${100 * v.harmony / maxv}%;background:var(--ok)"></i></div></div>`).join('') : '';
+  $('w-faded').innerHTML = (w.fade_log || []).length ? w.fade_log.slice().reverse().map(f =>
+    `<div class="al-ev"><span class="t">#${f.tick}</span><span class="k">${esc(f.source)}</span><span class="al-muted">${esc(f.gist)}</span></div>`).join('') : '<div class="al-small al-dim">Nothing has slipped away yet.</div>';
+  $('w-text').textContent = w.view || "The loop hasn't seen anything yet.";
+}
+function showItem(id) {
+  const it = AL.world && AL.world.items.find(i => i.id === id);
+  if (!it) return;
+  const rows = [['kind', it.kind], ['from', it.source_name], ['where', it.ring + (it.ring === 'close' || it.ring === 'around' || it.ring === 'edge' ? ' (relatedness ' + it.sim + ')' : '')],
+    ['salience', it.salience.toFixed(3)], ['valence', it.valence.toFixed(3)], ['held in memory as', it.fidelity_name], ['seen as', it.detail],
+    ['held by agent', it.held ? 'yes' : 'no'], ['resolved', it.resolved ? 'yes' : 'no'], ['standing sense', it.anchor ? 'yes' : 'no'],
+    ['tension growth', it.grows ? it.grows + '/h' : '—'], ['capacity cost', it.cost + ' chars'],
+    ['born', new Date(it.born * 1000).toLocaleString()], ['last touched', new Date(it.touched * 1000).toLocaleString()], ['key', it.key]];
+  openModal('[' + it.id + '] ' + it.gist,
+    `<dl class="al-kv">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`
+    + `<div class="al-small al-dim" style="margin:.8rem 0 .3rem">Full</div><pre class="al-pre">${esc(it.text)}</pre>`
+    + `<div class="al-small al-dim" style="margin:.6rem 0 .3rem">What the agent sees from its current focus</div><pre class="al-pre">${esc(it.shown)}</pre>`);
+}
+
+/* ── Predictions ──────────────────────────────────── */
+function fmtQ(v, unit) {
+  if (v == null) return '—';
+  if (unit === 's') return v < 90 ? Math.round(v) + 's' : v < 5400 ? Math.round(v / 60) + 'm' : (v / 3600).toFixed(1) + 'h';
+  if (unit === 'tok') return tok(Math.round(v));
+  return v.toFixed(2);
+}
+function spark(hist) {
+  if (!hist || !hist.length) return '';
+  const W = 140, H = 28, n = hist.length;
+  const pts = hist.map((h, i) => `${(n === 1 ? W : i * W / (n - 1)).toFixed(1)},${(H - 2 - h.surprise * (H - 4)).toFixed(1)}`).join(' ');
+  const lastS = hist[n - 1].surprise;
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-label="surprise history"><line x1="0" x2="${W}" y1="${(H - 2 - 0.25 * (H - 4)).toFixed(1)}" y2="${(H - 2 - 0.25 * (H - 4)).toFixed(1)}" stroke="rgba(255,255,255,.12)" stroke-dasharray="3 3"/><polyline fill="none" stroke="${lastS > 0.5 ? '#f59e0b' : '#818cf8'}" stroke-width="1.6" points="${pts}"/></svg>`;
+}
+async function loadPredictions() {
+  const r = await api('/api/agi-loop/predictions');
+  if (!r._ok) return;
+  const rows = (r.features || []).map(f => {
+    const last = f.last || {};
+    const exp = f.kind === 'bern' ? Math.round(100 * f.expected) + '% chance' : '~' + fmtQ(f.expected, f.unit) + (f.std_factor ? ' (×' + f.std_factor.toFixed(1) + ')' : '');
+    const seen = f.kind === 'bern' ? (last.raw ? 'yes' : 'no') : fmtQ(last.raw, f.unit);
+    const s = last.surprise || 0;
+    return `<tr><td class="al-mono">${esc(f.key)}</td><td>${esc(f.source)}</td><td>${esc(exp)}</td><td>${esc(seen)}</td>`
+      + `<td><span style="color:${s >= 0.5 ? '#fcd34d' : s >= 0.25 ? '#fde68a' : 'var(--mu)'};font-weight:700">${s.toFixed(2)}</span></td><td>${spark(f.history)}</td><td>${f.n}</td></tr>`;
+  });
+  $('p-rows').innerHTML = rows.length ? rows.join('') : '<tr><td colspan="7" class="al-empty">No observations yet.</td></tr>';
+  const ex = (r.expectations || []).slice().reverse();
+  const color = {pending: 'var(--mu)', met: '#6ee7b7', violated: '#fca5a5'};
+  $('p-exp').innerHTML = ex.length ? ex.map(e => `<tr><td>${esc(e.text)}</td><td>${esc(e.channel)}</td><td>${clock(new Date(e.deadline * 1000).toISOString())}</td><td style="color:${color[e.status]};font-weight:700">${esc(e.status)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="al-empty">None yet.</td></tr>';
+}
+
+/* ── Processes ────────────────────────────────────── */
+function renderProcesses() {
+  const s = AL.status;
+  if (!s) return;
+  $('pr-stages').innerHTML = s.processes.map((p, i) => {
+    const live = s.stage === p.stage;
+    const st = live ? 'running' : p.status;
+    return `<div class="al-stage ${live ? 'running' : ''} ${p.status === 'error' ? 'error' : ''}"><div class="sn"><span class="sd ${st}"></span>${i + 1}. ${esc(p.stage)}</div>`
+      + `<div class="sa">${esc(p.about)}</div><div class="sm"><span>${p.runs} run${p.runs === 1 ? '' : 's'}</span><span>${p.last_ms != null ? p.last_ms + ' ms' : '—'}</span><span>avg ${p.avg_ms != null ? p.avg_ms + ' ms' : '—'}</span></div>`
+      + `<div class="snote" title="${esc(p.note)}">${esc(p.note || '')}${p.errors ? ` <span style="color:#fca5a5">· ${p.errors} err</span>` : ''}</div></div>`;
+  }).join('');
+  const ch = Object.values(s.channels || {});
+  $('pr-channels').innerHTML = ch.length ? ch.map(c => {
+    const feats = Object.entries(c.features || {}).map(([k, v]) => `<span class="al-chip">${esc(k)}=${typeof v === 'number' ? (v % 1 ? v.toFixed(1) : v) : esc(v)}</span>`).join(' ');
+    return `<div class="al-ev" style="display:block"><div class="al-row" style="justify-content:space-between"><span><span class="sd ${c.ok ? 'ok' : 'error'}" style="display:inline-block"></span> <b>${esc(c.channel)}</b></span><span class="t">${ago(c.at)}</span></div>`
+      + `<div class="al-small al-muted" style="margin:.2rem 0">${esc(c.reading || '')}</div><div class="al-row">${feats}</div></div>`;
+  }).join('') : '<div class="al-empty">Not sensed yet.</div>';
+  const cfg = AL.config;
+  $('pr-guards').innerHTML = [
+    ['Repetition', `${s.stale_streak} / ${cfg.stale_streak_limit} identical ticks`],
+    ['Forced rests', `${s.guard_rests} / ${cfg.max_guard_rests} this session`],
+    ['Error streak', `${s.error_streak} / ${cfg.error_streak_limit}`],
+    ['Dwell', `${s.dwell} tick(s) at ${s.focus_name} (notices at ${cfg.rumination_ticks})`],
+    ['Capacity', `${s.capacity.used} / ${s.capacity.of} chars`],
+    ['Energy', `${Math.round(s.budget.energy * 100)}% · ${tok(s.budget.tokens_left)} tokens left today`],
+    ['Resting', s.resting || 'no'],
+  ].map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('');
+}
+
+/* ── Workbench ────────────────────────────────────── */
+async function loadWorkbench() {
+  const r = await api('/api/agi-loop/workbench');
+  if (!r.enabled) { $('wb-files').innerHTML = '<div class="al-empty">Workbench is disabled in configuration.</div>'; return; }
+  $('wb-files').innerHTML = r.files.length ? r.files.map(f =>
+    `<div class="al-li" onclick="viewFile(this.dataset.p)" data-p="${esc(f.path)}"><div class="top"><span class="al-mono" style="color:var(--tx)">${esc(f.path)}</span><span>${(f.bytes / 1024).toFixed(1)} KB · ${ago(f.modified)}</span></div></div>`).join('')
+    : '<div class="al-empty">Empty bench.</div>';
+  $('wb-refl').innerHTML = r.reflections.length ? r.reflections.slice().reverse().map(x =>
+    `<div class="al-li" style="cursor:default"><div class="top"><span>${clock(x.ts)}</span><span>${ago(x.ts)}</span></div><div class="body">`
+    + ['built', 'worked', 'didnt', 'next'].filter(k => x[k]).map(k => `<div><span class="al-dim">${k === 'didnt' ? "didn't" : k}:</span> ${esc(x[k])}</div>`).join('') + `</div></div>`).join('')
+    : '<div class="al-empty">None yet.</div>';
+}
+async function viewFile(path) {
+  const r = await api('/api/agi-loop/workbench/file?path=' + encodeURIComponent(path));
+  const v = $('wb-view'); v.style.display = 'block';
+  v.textContent = r.ok ? r.content : (r.reason || 'Unreadable');
+}
+
+/* ── Linux ────────────────────────────────────────── */
+const LX = {view: 'files', tree: null, open: new Set(['']), sel: '', stats: 0, logBytes: -1};
+function lxBytes(n) { n = n || 0; const u = ['B', 'KB', 'MB', 'GB']; let i = 0; while (n >= 1024 && i < 3) { n /= 1024; i++; } return (i ? n.toFixed(1) : n) + ' ' + u[i]; }
+function lxMarkdown(text) {
+  const html = window.marked ? marked.parse(text) : '<pre>' + esc(text) + '</pre>';
+  return window.DOMPurify ? DOMPurify.sanitize(html) : '<pre>' + esc(text) + '</pre>';
+}
+function lxView(v) {
+  LX.view = v;
+  document.querySelectorAll('.lx-seg button').forEach(b => b.classList.toggle('active', b.dataset.lx === v));
+  $('lx-pane-files').style.display = v === 'files' ? '' : 'none';
+  $('lx-pane-terminal').style.display = v === 'terminal' ? '' : 'none';
+  try { localStorage.setItem('agiLoopLinuxView', v); } catch (e) {}
+  lxRefresh(true);
+}
+function lxOffline(r) {
+  const off = r.enabled === false;
+  $('lx-dot').className = 'lx-dot off';
+  $('lx-state').textContent = off ? 'no machine' : 'unreachable';
+  $('lx-off').style.display = '';
+  $('lx-off-msg').textContent = r.reason || 'Unreachable';
+  $('lx-pane-files').style.display = 'none'; $('lx-pane-terminal').style.display = 'none';
+}
+async function lxRefresh(force) {
+  if (force || Date.now() - LX.stats > 15000) {
+    LX.stats = Date.now();
+    const s = await api('/api/agi-loop/linux/stats');
+    if (!s.ok) return lxOffline(s);
+    $('lx-off').style.display = 'none';
+    $('lx-pane-files').style.display = LX.view === 'files' ? '' : 'none';
+    $('lx-pane-terminal').style.display = LX.view === 'terminal' ? '' : 'none';
+    $('lx-dot').className = 'lx-dot on'; $('lx-state').textContent = 'online';
+    const dp = s.disk_total ? s.disk_used / s.disk_total * 100 : 0;
+    $('lx-disk').innerHTML = `disk ${lxBytes(s.disk_used)} / ${lxBytes(s.disk_total)}<span class="al-bar"><i style="width:${dp.toFixed(1)}%"></i></span>`;
+    $('lx-mem').textContent = `mem ${lxBytes(s.mem_total - s.mem_available)} / ${lxBytes(s.mem_total)} · load ${(s.load || 0).toFixed(2)}`;
+    $('lx-up').textContent = 'up ' + hms(s.uptime);
+  }
+  if (LX.view === 'terminal') lxLoadLog();
+  else if (force || !LX.tree) lxLoadTree();
+}
+
+/* Files */
+async function lxLoadTree() {
+  const r = await api('/api/agi-loop/linux/tree');
+  if (!r.ok) return;
+  const root = {dirs: {}, files: [], readme: null};
+  for (const e of r.entries) {
+    const parts = e.path.split('/'); let node = root;
+    for (let i = 0; i < parts.length - 1; i++) node = node.dirs[parts[i]] = node.dirs[parts[i]] || {dirs: {}, files: [], readme: null};
+    const name = parts[parts.length - 1];
+    if (e.type === 'dir') node.dirs[name] = node.dirs[name] || {dirs: {}, files: [], readme: null};
+    else { node.files.push({...e, name}); if (/^readme(\.md)?$/i.test(name)) node.readme = e.path; }
+  }
+  LX.tree = root;
+  $('lx-tree').innerHTML = lxRenderDir(root, '') + (r.truncated ? '<div class="al-small al-dim">…more files than shown</div>' : '')
+    || '<div class="al-empty">Her home is empty.</div>';
+  if (!LX.sel) lxSelect('', true);
+}
+function lxRenderDir(node, prefix) {
+  let html = '';
+  for (const name of Object.keys(node.dirs).sort()) {
+    const d = node.dirs[name], path = prefix + name, open = LX.open.has(path);
+    const hasWork = Object.keys(d.dirs).length || d.files.length;
+    html += `<button class="lx-node ${LX.sel === path ? 'sel' : ''}" onclick="lxSelect(this.dataset.p, true)" data-p="${esc(path)}">`
+      + `<span>${open ? '▾' : '▸'}</span><span class="nm">${esc(name)}/</span>${!d.readme && hasWork && !name.startsWith('.') ? '<span class="rd">no README</span>' : ''}</button>`;
+    if (open) html += `<div class="lx-kids">${lxRenderDir(d, path + '/')}</div>`;
+  }
+  for (const f of node.files.sort((a, b) => a.name.localeCompare(b.name))) {
+    html += `<button class="lx-node ${LX.sel === f.path ? 'sel' : ''}" onclick="lxSelect(this.dataset.p, false)" data-p="${esc(f.path)}">`
+      + `<span>${/^readme/i.test(f.name) ? '★' : '·'}</span><span class="nm">${esc(f.name)}</span><span class="sz">${lxBytes(f.bytes)}</span></button>`;
+  }
+  return html;
+}
+function lxDir(path) { let n = LX.tree; for (const p of path ? path.split('/') : []) { n = n && n.dirs[p]; } return n; }
+async function lxSelect(path, isDir) {
+  LX.sel = path;
+  if (isDir) {
+    if (path) { if (LX.open.has(path) && LX.selPrev === path) LX.open.delete(path); else LX.open.add(path); }
+    LX.selPrev = path;
+    $('lx-tree').innerHTML = lxRenderDir(LX.tree, '');
+    const d = lxDir(path);
+    if (d && d.readme) return lxShowFile(d.readme);
+    $('lx-path').textContent = (path || '~') + '/';
+    $('lx-meta').textContent = '';
+    $('lx-view').innerHTML = `<div class="al-empty">${path ? 'No README in this folder yet — she hasn\'t explained it.' : 'No ~/README.md yet — her map of home.'}</div>`;
+    return;
+  }
+  $('lx-tree').innerHTML = lxRenderDir(LX.tree, '');
+  lxShowFile(path);
+}
+async function lxShowFile(path) {
+  $('lx-path').textContent = '~/' + path;
+  $('lx-meta').textContent = 'loading…';
+  const r = await api('/api/agi-loop/linux/file?path=' + encodeURIComponent(path));
+  if (!r.ok) { $('lx-meta').textContent = ''; $('lx-view').innerHTML = `<div class="al-empty">${esc(r.reason || 'Unreadable')}</div>`; return; }
+  $('lx-meta').textContent = r.truncated ? 'first 200 KB' : '';
+  $('lx-view').innerHTML = /\.(md|markdown)$/i.test(path) ? `<div class="lx-md">${lxMarkdown(r.content)}</div>`
+    : `<pre class="al-pre" style="max-height:560px;overflow:auto">${esc(r.content)}</pre>`;
+}
+
+/* Terminal */
+async function lxLoadLog() {
+  const r = await api('/api/agi-loop/linux/log?lines=600');
+  if (!r.ok) return;
+  if (r.bytes === LX.logBytes) return;
+  LX.logBytes = r.bytes;
+  const term = $('lx-term');
+  const atBottom = term.scrollHeight - term.scrollTop - term.clientHeight < 40;
+  term.innerHTML = r.text ? r.text.split('\n').map(line =>
+    line.startsWith('── ') ? `<span class="h">${esc(line)}</span>`
+    : line.startsWith('$ ') ? `<span class="c">${esc(line)}</span>`
+    : /^\[exit 0\]/.test(line) ? `<span class="ok">${esc(line)}</span>`
+    : /^\[exit /.test(line) ? `<span class="bad">${esc(line)}</span>`
+    : esc(line)).join('\n') : '<span class="h">No commands yet. When she uses her machine, it shows up here.</span>';
+  if ($('lx-follow').checked || atBottom) term.scrollTop = term.scrollHeight;
+}
+(function () { try { const v = localStorage.getItem('agiLoopLinuxView'); if (v === 'terminal') LX.view = 'terminal'; } catch (e) {}
+  document.querySelectorAll('.lx-seg button').forEach(b => b.classList.toggle('active', b.dataset.lx === LX.view));
+  $('lx-pane-files').style.display = LX.view === 'files' ? '' : 'none';
+  $('lx-pane-terminal').style.display = LX.view === 'terminal' ? '' : 'none'; })();
+
+/* ── Journal ──────────────────────────────────────── */
+async function loadJournal() {
+  const r = await api('/api/agi-loop/journal?limit=500');
+  const sig = (r.total || 0) + ':' + ((r.entries || []).slice(-1)[0] || {}).ts;
+  if (AL._jnSig === sig) return;   // nothing new → no redraw
+  AL._jnSig = sig;
+  const list = (r.entries || []).slice().reverse();
+  $('jn-count').textContent = (r.total || 0) + ' entries';
+  $('jn-list').innerHTML = list.length ? list.map(j =>
+    `<div class="al-li ${j.had_error ? 'err' : ''}" onclick="this.querySelector('.body').classList.toggle('clamp')"><div class="top"><span>#${j.tick} · ${clock(j.ts)} · ${esc(j.focus || '')} · ${esc(j.mood || '')}</span><span>${tok(j.tokens)} tok · $${(j.cost || 0).toFixed(4)}</span></div>`
+    + `<div class="body clamp">${esc(j.narrative)}</div>${(j.tools_used || []).length ? `<div class="al-row" style="margin-top:.3rem">${j.tools_used.map(t => `<span class="al-chip">${esc(t)}</span>`).join('')}</div>` : ''}</div>`).join('')
+    : '<div class="al-empty">Empty.</div>';
+}
+async function clearJournal() {
+  if (!confirm('Clear the journal? Ticks and the inner world are kept.')) return;
+  await api('/api/agi-loop/journal', {method: 'DELETE'});
+  loadJournal();
+}
+
+/* ── Ticks ────────────────────────────────────────── */
+async function loadTicks() {
+  const r = await api('/api/agi-loop/ticks?limit=200&brief=1');   // the table only; a tick loads in full on click
+  AL.ticks = (r.ticks || []).slice().reverse();
+  $('tk-rows').innerHTML = AL.ticks.length ? AL.ticks.map((t, i) =>
+    `<tr class="click" onclick="showTick(${i})"><td>${t.tick}</td><td>${clock(t.time)}</td><td>${esc(t.wake || '')}</td><td>${esc(t.focus || '')}</td><td>${esc(t.mood || '')}</td>`
+    + `<td>${(t.tool_calls || []).length}${(t.tool_calls || []).some(c => !c.ok) ? ' <span style="color:#fca5a5">!</span>' : ''}</td><td>${tok(t.tokens)}</td><td>${(t.latency || 0).toFixed(1)}s</td></tr>`).join('')
+    : '<tr><td colspan="8" class="al-empty">No ticks yet.</td></tr>';
+}
+async function showTick(i) {
+  let t = AL.ticks[i];
+  if (!t) return;
+  if (t.view === undefined) {   // the list is brief; fetch this one tick whole
+    $('tk-detail').innerHTML = '<div class="al-empty">Loading tick ' + t.tick + '…</div>';
+    const full = await api('/api/agi-loop/ticks?tick=' + t.tick);
+    if (!full._ok || !(full.ticks || []).length) { $('tk-detail').innerHTML = '<div class="al-empty">That tick has rolled out of the log.</div>'; return; }
+    t = AL.ticks[i] = full.ticks[0];
+  }
+  const tools = (t.tool_calls || []).map(c => `<div class="al-li" style="cursor:default"><div class="top"><span class="al-mono" style="color:${c.ok ? 'var(--tx)' : '#fca5a5'}">${esc(c.tool)}</span><span>${c.ms != null ? c.ms + ' ms' : ''}</span></div>`
+    + `<pre class="al-pre" style="margin-top:.3rem">${esc(JSON.stringify(c.arguments || {}, null, 1))}</pre><pre class="al-pre" style="margin-top:.3rem;max-height:160px;overflow:auto">${esc(c.result)}</pre></div>`).join('');
+  const surprises = (t.surprises || []).map(s => `<div class="al-small">! (${esc(s.source)}) ${esc(s.text)} <span class="al-dim">${s.surprise}</span></div>`).join('');
+  $('tk-detail').innerHTML = `<dl class="al-kv"><dt>tick</dt><dd>${t.tick} · ${new Date(t.time).toLocaleString()}</dd><dt>model</dt><dd>${esc(t.model || '—')}</dd>`
+    + `<dt>tokens · cost</dt><dd>${tok(t.tokens)} · $${(t.cost || 0).toFixed(4)} · ${t.steps || 0} step(s) · ${(t.latency || 0).toFixed(1)}s</dd>`
+    + `${t.pulled ? `<dt>pulled</dt><dd>to ${esc(t.pulled.to)} by ${esc(t.pulled.by)}</dd>` : ''}${(t.faded || []).length ? `<dt>faded</dt><dd>${esc(t.faded.join('; '))}</dd>` : ''}</dl>`
+    + (t.error ? `<div style="color:#fca5a5;margin-top:.5rem">${esc(t.error)}</div>` : '')
+    + (surprises ? `<div style="margin-top:.6rem">${surprises}</div>` : '')
+    + `<div class="al-small al-dim" style="margin:.7rem 0 .3rem">What it saw</div><pre class="al-pre" style="max-height:300px;overflow:auto">${esc(t.view)}</pre>`
+    + `<div class="al-small al-dim" style="margin:.7rem 0 .3rem">What it said</div><pre class="al-pre">${esc(t.response || '(nothing)')}</pre>`
+    + (tools ? `<div class="al-small al-dim" style="margin:.7rem 0 .3rem">Tool calls</div>${tools}` : '');
+}
+
+/* ── Inbox (shared inbox tool) ────────────────────── */
+const INBOX_ICONS = {message: '💬', task: '📋', tool_request: '🔧', warning: '⚠️', idea: '💡'};
+async function inboxRefresh() {
+  const r = await api('/api/inbox/list');
+  AL.inbox = r.entries || [];
+  const active = AL.inbox.filter(e => e.status === 'unread' || (e.type === 'task' && e.status === 'pending')).length;
+  const b = $('inbox-tab-badge'); b.textContent = active; b.classList.toggle('zero', !active);
+  renderInbox();
+}
+function renderInbox() {
+  const f = AL.inboxFilter;
+  let list = AL.inbox.slice();
+  if (f === 'unread') list = list.filter(e => e.status === 'unread' || (e.type === 'task' && e.status === 'pending'));
+  else if (f === 'task') list = list.filter(e => e.type === 'task');
+  else if (f === 'message') list = list.filter(e => e.type === 'message' || e.type === 'idea');
+  else if (f === 'warning') list = list.filter(e => e.type === 'warning' || e.type === 'tool_request');
+  list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+  $('inbox-list').innerHTML = list.length ? list.map(e => {
+    const st = e.status === 'unread' ? 'unread' : (e.type === 'task' && e.status === 'pending') ? 'pending' : '';
+    const pr = e.priority && e.priority !== 'normal' ? `<span class="inbox-priority ${esc(e.priority)}">${esc(e.priority)}</span>` : '';
+    return `<div class="inbox-entry ${st}" onclick="inboxSelect('${esc(e.id)}')"><span>${INBOX_ICONS[e.type] || '💬'}</span><div class="inbox-entry-body">`
+      + `<div class="inbox-subject">${esc(e.subject || e.task || '(no subject)')}</div><div class="inbox-preview">${esc((e.body || e.task || '').slice(0, 90))}</div>`
+      + `<div class="inbox-meta"><span>${esc((e.created_at || '').slice(0, 16).replace('T', ' '))} UTC</span>${e.from ? `<span>from ${esc(e.from)}</span>` : ''}${pr}${e.needs_approval ? '<span class="inbox-priority urgent">needs approval</span>' : ''}<span>${esc(e.status)}</span></div></div></div>`;
+  }).join('') : '<div class="al-empty">No inbox entries.</div>';
+}
+document.querySelectorAll('.inbox-filter-btn[data-f]').forEach(b => b.addEventListener('click', () => {
+  AL.inboxFilter = b.dataset.f;
+  document.querySelectorAll('.inbox-filter-btn[data-f]').forEach(x => x.classList.toggle('active', x === b));
+  renderInbox();
+}));
+function inboxSelect(id) {
+  const e = AL.inbox.find(x => x.id === id);
+  if (!e) return;
+  $('inbox-detail').style.display = '';
+  $('inbox-d-type').textContent = (INBOX_ICONS[e.type] || '💬') + ' ' + (e.type || 'message');
+  $('inbox-d-subject').textContent = e.subject || e.task || '(no subject)';
+  $('inbox-d-body').textContent = e.body || e.task || '';
+  $('inbox-d-meta').textContent = ['from ' + (e.from || 'system'), (e.created_at || '').slice(0, 16).replace('T', ' ') + ' UTC', 'priority ' + (e.priority || 'normal'), e.status].join(' · ');
+  $('inbox-d-actions').innerHTML = (e.status === 'unread' || e.status === 'pending' ? `<button class="al-btn al-btn-sm b-go" onclick="inboxAck('${esc(e.id)}')">✓ Acknowledge</button>` : '')
+    + `<button class="al-btn al-btn-sm b-danger" onclick="inboxDelete('${esc(e.id)}')">Delete</button>`;
+}
+function inboxClose() { $('inbox-detail').style.display = 'none'; }
+async function inboxAck(id) {
+  const r = await api('/api/inbox/ack', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({task_id: id})});
+  r.ok ? toast('Acknowledged') : toast(r.error || 'Failed', 'error');
+  inboxClose(); inboxRefresh();
+}
+async function inboxDelete(id) {
+  if (!confirm('Delete this inbox entry?')) return;
+  const r = await api('/api/inbox/delete', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id})});
+  r.ok ? toast('Deleted') : toast(r.error || 'Failed', 'error');
+  inboxClose(); inboxRefresh();
+}
+async function inboxSend() {
+  const action = $('ib-action').value, subject = $('ib-subject').value.trim(), body = $('ib-body').value.trim();
+  if (!subject) return toast('Write something first', 'error');
+  const payload = {action, priority: $('ib-priority').value, profile: 'operator'};
+  if (action === 'send') Object.assign(payload, {subject, body: body || subject, type: 'message'});
+  else payload.task = subject;
+  const r = await api('/api/inbox/send', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+  if (r.ok) { $('ib-subject').value = ''; $('ib-body').value = ''; toast('Added'); inboxRefresh(); }
+  else toast(r.error || 'Failed', 'error');
+}
+
+/* ── Configuration ────────────────────────────────── */
+function fillConfigForm(cfg) {
+  const form = $('cfg-form');
+  Object.entries(cfg).forEach(([k, v]) => {
+    const el = form.querySelector(`[name="${k}"]`);
+    if (!el) return;
+    if (el.type === 'checkbox') el.checked = !!v; else el.value = v;
+  });
+  fillModels();
+}
+function fillModels() {
+  const id = $('cfg-form').querySelector('[name="connection_id"]').value;
+  const conns = id ? AL.connections.filter(c => c.id === id) : AL.connections;
+  const models = [...new Set(conns.flatMap(c => c.models || []))].slice(0, 400);
+  $('cfg-models').innerHTML = models.map(m => `<option value="${esc(m)}">`).join('');
+}
+async function saveConfig() {
+  const form = $('cfg-form');
+  const data = {};
+  form.querySelectorAll('[name]').forEach(el => {
+    if (el.type === 'checkbox') data[el.name] = el.checked;
+    else if (el.type === 'number') data[el.name] = el.value === '' ? null : Number(el.value);
+    else data[el.name] = el.value;
+  });
+  const r = await api('/api/agi-loop/config', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data)});
+  if (!r.ok) return toast(r.reason || 'Save failed', 'error');
+  AL.config = r.config;
+  fillConfigForm(r.config);
+  loadResolvedModel();
+  toast(r.restart_needed ? 'Saved — restart the loop for agent/workbench changes' : 'Saved');
+  loadStatus();
+}
+async function loadResolvedModel() {
+  const r = await api('/api/agi-loop/config');
+  $('cfg-resolved').textContent = r.resolved_model ? 'Will use: ' + r.resolved_model : 'No connection resolves for this agent yet.';
+  $('ov-noconn').style.display = r.resolved_model ? 'none' : '';
+}
+async function resetWorld() {
+  if (!confirm('Reset the field? Items, beliefs, expectations and focus are cleared. Logs and the workbench are kept.')) return;
+  const r = await api('/api/agi-loop/reset-world', {method: 'POST'});
+  r.ok ? toast('The field is clear') : toast(r.reason || 'Failed', 'error');
+  loadWorld();
+}
+
+/* ── Boot ─────────────────────────────────────────── */
+(function boot() {
+  fillConfigForm(AL.config);
+  loadResolvedModel();
+  let tab = 'overview';
+  try { tab = localStorage.getItem('agiLoopTab') || 'overview'; } catch (e) {}
+  if (!document.getElementById('panel-' + tab)) tab = 'overview';
+  loadStatus().then(() => switchTab(tab));
+  inboxRefresh();
+  // A page you're not looking at doesn't poll: with three loops and the group chat open in tabs,
+  // background polling was most of the server's request load. Coming back catches up at once.
+  const seen = () => !document.hidden;
+  setInterval(() => { if (seen()) loadStatus(); }, 2000);
+  setInterval(() => { if (seen()) tickWakeClock(); }, 500);
+  setInterval(() => { if (seen()) refreshTab(false); }, 4000);
+  setInterval(() => { if (seen() && ['journal', 'ticks', 'workbench', 'inbox'].includes(AL.tab)) refreshTab(true); }, 15000);
+  document.addEventListener('visibilitychange', () => { if (seen()) { loadStatus(); refreshTab(true); } });
+})();
+</script>
+{% endblock %}

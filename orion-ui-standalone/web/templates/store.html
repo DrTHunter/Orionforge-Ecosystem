@@ -1,0 +1,584 @@
+{% extends "base.html" %}
+{% block title %}Store — SoulScript Engine{% endblock %}
+
+{% block content %}
+<style>
+  .store-shell { max-width: 100%; margin: 0 auto; padding: 0 1rem; }
+
+  /* Header */
+  .store-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem; }
+  .store-header h1 { font-size: 1.75rem; font-weight: 800; color: #fff; margin: 0; }
+  .credit-badge {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: rgba(99,102,241,0.12); border: 1px solid rgba(99,102,241,0.25);
+    border-radius: 2rem; padding: 0.5rem 1.25rem; font-size: 0.95rem; font-weight: 700; color: #a5b4fc;
+  }
+  .credit-badge .coin { font-size: 1.2rem; }
+
+  /* Tabs */
+  .store-tabs { display: flex; gap: 0; border-bottom: 1px solid #2a2a3a; margin-bottom: 2rem; flex-wrap: wrap; }
+  .store-tab {
+    padding: 0.75rem 1.5rem; font-size: 0.875rem; font-weight: 600; color: #71717a;
+    background: none; border: none; cursor: pointer; border-bottom: 2px solid transparent;
+    transition: all 0.15s; position: relative; top: 1px;
+  }
+  .store-tab:hover { color: #a1a1aa; }
+  .store-tab.active { color: #fff; border-bottom-color: #6366f1; }
+
+  /* Section */
+  .store-section { display: none; animation: storeFade 0.2s ease; }
+  .store-section.active { display: block; }
+  @keyframes storeFade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+
+  /* ── Credit Packs (Forge style) ── */
+  .credits-hero { text-align: center; margin: 0.25rem 0 1.75rem; }
+  .credits-hero-title {
+    font-size: 2.4rem; font-weight: 900; letter-spacing: 0.12em; margin: 0;
+    background: linear-gradient(90deg,#818cf8,#c084fc,#818cf8);
+    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .credits-hero-sub {
+    margin-top: 0.4rem; font-size: 0.82rem; font-weight: 700; letter-spacing: 0.32em;
+    text-transform: uppercase; color: #a78bfa;
+  }
+  .credits-hero-sub::before, .credits-hero-sub::after { content: '\25C6'; margin: 0 0.6rem; color: #7c3aed; }
+
+  /* Feature tiles */
+  .credit-features { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 2.25rem; }
+  @media (max-width: 860px) { .credit-features { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .credit-features { grid-template-columns: 1fr; } }
+  .cfeature {
+    display: flex; align-items: flex-start; gap: 0.85rem;
+    background: rgba(26,26,36,0.6); border: 1px solid rgba(124,58,237,0.18);
+    border-radius: 0.75rem; padding: 1rem 1.1rem;
+  }
+  .cfeature-ico {
+    flex-shrink: 0; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;
+    border-radius: 0.6rem; background: rgba(124,58,237,0.14); color: #c084fc; border: 1px solid rgba(124,58,237,0.3);
+  }
+  .cfeature-ico svg { width: 20px; height: 20px; }
+  .cfeature h4 { margin: 0 0 0.15rem; font-size: 0.85rem; font-weight: 700; color: #ede9fe; letter-spacing: 0.02em; }
+  .cfeature p { margin: 0; font-size: 0.78rem; color: #a1a1aa; line-height: 1.4; }
+
+  /* Packs grid */
+  .packs-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 1024px) { .packs-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 520px) { .packs-grid { grid-template-columns: 1fr; } }
+  .pack-card {
+    background: linear-gradient(180deg, rgba(30,27,55,0.85), rgba(20,18,33,0.9));
+    border: 1px solid rgba(124,58,237,0.25);
+    border-radius: 1rem; padding: 1.75rem 1.25rem 1.5rem; text-align: center;
+    transition: all 0.2s; cursor: default; position: relative;
+  }
+  .pack-card:hover { border-color: #a855f7; box-shadow: 0 0 34px rgba(168,85,247,0.22); transform: translateY(-3px); }
+  .pack-card.popular { border-color: #a855f7; box-shadow: 0 0 30px rgba(168,85,247,0.18); }
+  .pack-card.popular::before {
+    content: 'BEST VALUE'; position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+    background: linear-gradient(90deg,#7c3aed,#a855f7); color: #fff; font-size: 0.6rem; font-weight: 800;
+    padding: 4px 14px; border-radius: 20px; letter-spacing: 0.08em; white-space: nowrap;
+    box-shadow: 0 4px 14px rgba(124,58,237,0.45);
+  }
+  .pack-credits-big {
+    font-size: 2.1rem; font-weight: 900; color: #fff; line-height: 1; margin-top: 0.25rem;
+    text-shadow: 0 0 22px rgba(168,85,247,0.35);
+  }
+  .pack-credits-label { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.22em; color: #a78bfa; margin-top: 0.3rem; }
+  .pack-coin { width: 64px; height: 48px; margin: 0.9rem auto 0.4rem; display: block; }
+  .pack-bonus-badge {
+    display: inline-block; margin-top: 0.4rem; font-size: 0.66rem; font-weight: 800; letter-spacing: 0.04em;
+    color: #34d399; background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.3);
+    border-radius: 0.5rem; padding: 2px 9px;
+  }
+  .pack-btn {
+    margin-top: 1.1rem; width: 100%; padding: 0.7rem; border: none; border-radius: 0.6rem;
+    font-size: 1rem; font-weight: 800; cursor: pointer; transition: all 0.2s; letter-spacing: 0.02em;
+    background: linear-gradient(90deg,#6366f1,#a855f7); color: #fff; box-shadow: 0 6px 18px rgba(124,58,237,0.3);
+  }
+  .pack-btn:hover { filter: brightness(1.12); transform: translateY(-1px); }
+  .pack-btn:disabled { opacity: 0.55; cursor: not-allowed; filter: none; transform: none; }
+
+  /* Tool / Item Cards */
+  .catalog-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+  @media (max-width: 768px) { .catalog-grid { grid-template-columns: 1fr; } }
+  .catalog-card {
+    background: rgba(26,26,36,0.8); border: 1px solid rgba(42,42,58,0.6);
+    border-radius: 0.75rem; padding: 1.5rem; transition: all 0.2s;
+    display: flex; flex-direction: column; gap: 0.75rem; position: relative;
+  }
+  .catalog-card:hover { border-color: rgba(99,102,241,0.4); }
+  .catalog-card.owned { border-color: rgba(16,185,129,0.35); }
+  .catalog-card-header { display: flex; align-items: center; gap: 0.75rem; }
+  .catalog-icon { font-size: 1.5rem; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; background: rgba(99,102,241,0.1); border-radius: 0.5rem; flex-shrink: 0; }
+  .catalog-name { font-size: 1rem; font-weight: 700; color: #fff; }
+  .catalog-category { font-size: 0.7rem; color: #71717a; text-transform: uppercase; letter-spacing: 0.05em; }
+  .catalog-desc { font-size: 0.85rem; color: #a1a1aa; line-height: 1.5; flex: 1; }
+  .catalog-footer { display: flex; align-items: center; justify-content: space-between; }
+  .catalog-price { font-size: 0.9rem; font-weight: 700; color: #a5b4fc; }
+  .catalog-price.free-price { color: #10b981; }
+
+  .catalog-buy-btn {
+    padding: 0.4rem 1rem; border: 1px solid rgba(99,102,241,0.4); border-radius: 0.4rem;
+    font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    background: transparent; color: #a5b4fc;
+  }
+  .catalog-buy-btn:hover { background: rgba(99,102,241,0.15); }
+  .catalog-buy-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .catalog-buy-btn.owned-btn { border-color: rgba(16,185,129,0.4); color: #10b981; cursor: default; }
+  .catalog-buy-btn.owned-btn:hover { background: transparent; }
+  .catalog-buy-btn.free-btn { border-color: rgba(16,185,129,0.4); color: #10b981; cursor: default; }
+  .catalog-buy-btn.free-btn:hover { background: transparent; }
+
+  /* Owned badge */
+  .owned-badge {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(16,185,129,0.15); color: #10b981;
+    font-size: 0.65rem; font-weight: 700; padding: 3px 10px;
+    border-radius: 20px; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+  .free-badge {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(16,185,129,0.12); color: #34d399;
+    font-size: 0.65rem; font-weight: 700; padding: 3px 10px;
+    border-radius: 20px; letter-spacing: 0.04em; text-transform: uppercase;
+  }
+
+  /* Skin cards */
+  .skin-store-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+  @media (max-width: 900px) { .skin-store-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .skin-store-grid { grid-template-columns: 1fr; } }
+  .skin-store-card {
+    background: rgba(26,26,36,0.8); border: 1px solid rgba(42,42,58,0.6);
+    border-radius: 0.75rem; padding: 1.25rem; text-align: center;
+    transition: all 0.2s; position: relative;
+  }
+  .skin-store-card:hover { border-color: rgba(99,102,241,0.4); }
+  .skin-store-card.owned { border-color: rgba(16,185,129,0.35); }
+  .skin-store-name { font-size: 0.95rem; font-weight: 700; color: #fff; margin-bottom: 0.5rem; }
+  .skin-store-price { font-size: 0.85rem; color: #a5b4fc; font-weight: 600; margin-bottom: 0.75rem; }
+  .skin-store-price.free { color: #10b981; }
+  .skin-store-btn {
+    width: 100%; padding: 0.5rem; border: 1px solid rgba(99,102,241,0.4); border-radius: 0.4rem;
+    font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: all 0.2s;
+    background: transparent; color: #a5b4fc;
+  }
+  .skin-store-btn:hover { background: rgba(99,102,241,0.15); }
+  .skin-store-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .skin-store-btn.owned-btn { border-color: rgba(16,185,129,0.4); color: #10b981; cursor: default; }
+
+  /* LLM Info */
+  .llm-info-card {
+    background: rgba(26,26,36,0.8); border: 1px solid rgba(42,42,58,0.6);
+    border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1.5rem;
+  }
+  .llm-info-card h3 { font-size: 1.1rem; font-weight: 700; color: #fff; margin-bottom: 0.75rem; }
+  .llm-info-card p { font-size: 0.875rem; color: #a1a1aa; line-height: 1.6; }
+  .llm-info-card .highlight { color: #a5b4fc; font-weight: 600; }
+  .llm-info-card .free-tag { color: #10b981; font-weight: 600; }
+
+  /* History */
+  .history-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+  .history-table th { text-align: left; color: #71717a; font-weight: 600; padding: 0.5rem 0.75rem; border-bottom: 1px solid #2a2a3a; }
+  .history-table td { color: #a1a1aa; padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(42,42,58,0.4); }
+  .history-table .credit-add { color: #10b981; }
+  .history-table .credit-sub { color: #ef4444; }
+
+  /* Banner */
+  .store-banner {
+    padding: 1rem; border-radius: 0.5rem; text-align: center; margin-bottom: 1.5rem; font-size: 0.9rem;
+  }
+  .store-banner.success { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.3); color: #34d399; }
+  .store-banner.canceled { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); color: #fbbf24; }
+
+  /* Agent Detail Modal */
+  .agent-modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(8px);
+    z-index: 5000;
+    display: none; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .agent-modal-overlay.active { display: flex; }
+  .agent-modal {
+    background: #1a1a24; border: 1px solid rgba(42,42,58,0.6);
+    border-radius: 1rem; max-width: 640px; width: 100%;
+    max-height: 85vh; overflow-y: auto;
+    box-shadow: 0 40px 80px rgba(0,0,0,0.5);
+    animation: agentModalIn 0.3s ease-out;
+  }
+  @keyframes agentModalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+  .agent-modal-close {
+    position: absolute; top: 16px; right: 16px;
+    background: rgba(255,255,255,0.1); border: none;
+    width: 36px; height: 36px; border-radius: 50%;
+    color: #a1a1aa; font-size: 1.2rem;
+    cursor: pointer; transition: all 0.2s; z-index: 2;
+  }
+  .agent-modal-close:hover { background: rgba(255,255,255,0.15); color: #fff; }
+  .agent-modal-header { padding: 32px 32px 0; position: relative; }
+  .agent-modal-header h2 { font-size: 1.5rem; font-weight: 800; color: #fff; margin: 0; }
+  .agent-modal-role { font-size: 0.85rem; color: #a78bfa; margin-top: 4px; }
+  .agent-modal-avatar {
+    width: 80px; height: 80px; border-radius: 50%;
+    object-fit: cover; border: 3px solid rgba(99,102,241,0.3);
+    margin-bottom: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  .agent-modal-body { padding: 24px 32px 32px; }
+  .agent-modal-body p { color: #a1a1aa; line-height: 1.8; margin-bottom: 16px; font-size: 0.9rem; }
+  .agent-modal-section {
+    font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.5px; color: #a78bfa; margin: 24px 0 12px;
+  }
+  .agent-modal-tags { display: flex; flex-wrap: wrap; gap: 8px; }
+  .agent-modal-tag {
+    padding: 6px 14px; border-radius: 50px; font-size: 0.8rem; font-weight: 500;
+    background: rgba(99,102,241,0.08); color: #a1a1aa;
+    border: 1px solid rgba(42,42,58,0.6);
+  }
+  .agent-modal-quote {
+    padding: 16px 20px; margin: 16px 0;
+    border-left: 3px solid #6366f1;
+    background: rgba(99,102,241,0.05);
+    border-radius: 0 0.5rem 0.5rem 0;
+    font-style: italic; color: #a1a1aa;
+  }
+  .agent-modal-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 32px; border-top: 1px solid rgba(42,42,58,0.6);
+  }
+  .agent-modal-price { font-size: 1.1rem; font-weight: 700; color: #a5b4fc; }
+  .agent-modal-price.free-price { color: #10b981; }
+  .agent-modal-buy-btn {
+    padding: 0.6rem 2rem; border: none; border-radius: 0.5rem;
+    font-size: 0.9rem; font-weight: 700; cursor: pointer; transition: all 0.2s;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff;
+  }
+  .agent-modal-buy-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+  .agent-modal-buy-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .agent-modal-buy-btn.owned-btn {
+    background: rgba(16,185,129,0.15); color: #10b981; cursor: default;
+    border: 1px solid rgba(16,185,129,0.3);
+  }
+  .agent-modal-buy-btn.owned-btn:hover { opacity: 1; transform: none; }
+</style>
+
+<div class="store-shell">
+  <!-- Success / Cancel banners -->
+  <div id="credits-success-banner" class="store-banner success" style="display:none;">
+    🎉 Credits purchased successfully! Your balance has been updated.
+  </div>
+  <div id="credits-canceled-banner" class="store-banner canceled" style="display:none;">
+    Credit purchase was canceled. You can buy credits anytime.
+  </div>
+
+  <!-- Header -->
+  <div class="store-header">
+    <h1>🛒 Store</h1>
+    <div class="credit-badge">
+      <span class="coin">🪙</span>
+      <span id="credit-balance">{{ credits }}</span> credits
+    </div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="store-tabs">
+    <button class="store-tab active" onclick="switchStoreTab('credits')">💳 Credit Packs</button>
+    <button class="store-tab" onclick="switchStoreTab('llm')">🧠 LLM Usage</button>
+    <button class="store-tab" onclick="switchStoreTab('history')">📜 History</button>
+  </div>
+
+  <!-- ═══ CREDIT PACKS ═══ -->
+  <div id="section-credits" class="store-section active">
+
+    <!-- Feature highlights -->
+    <div class="credit-features">
+      <div class="cfeature">
+        <span class="cfeature-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg></span>
+        <div><h4>Premium Tools</h4><p>Unlock advanced development tools.</p></div>
+      </div>
+      <div class="cfeature">
+        <span class="cfeature-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z"/></svg></span>
+        <div><h4>Instant Access</h4><p>Credits are added instantly.</p></div>
+      </div>
+      <div class="cfeature">
+        <span class="cfeature-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.8 4.2L18 9l-4.2 1.8L12 15l-1.8-4.2L6 9l4.2-1.8z"/><path d="M19 14l.6 1.5L21 16l-1.4.5L19 18l-.6-1.5L17 16l1.4-.5z"/></svg></span>
+        <div><h4>Exclusive Skins</h4><p>Customize your experience.</p></div>
+      </div>
+      <div class="cfeature">
+        <span class="cfeature-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></span>
+        <div><h4>Secure &amp; Reliable</h4><p>Powered by Stripe. Always secure.</p></div>
+      </div>
+      <div class="cfeature">
+        <span class="cfeature-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="8" width="16" height="11" rx="2"/><path d="M12 8V4M9 4h6"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/></svg></span>
+        <div><h4>Platform LLMs</h4><p>Access powerful AI models.</p></div>
+      </div>
+      <div class="cfeature">
+        <span class="cfeature-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9.17 9.17a4 4 0 1 0 0 5.66L12 12l2.83 2.83a4 4 0 1 0 0-5.66L12 12 9.17 9.17z"/></svg></span>
+        <div><h4>No Expiry</h4><p>Use your credits whenever you need.</p></div>
+      </div>
+    </div>
+
+    <!-- Heading -->
+    <div class="credits-hero">
+      <h2 class="credits-hero-title">CREDIT PACKS</h2>
+      <div class="credits-hero-sub">Fuel Your Creations</div>
+    </div>
+
+    <div class="packs-grid">
+      {% for pack in credit_packs %}
+      <div class="pack-card {% if pack.bonus and loop.last %}popular{% endif %}">
+        <div class="pack-credits-big">{{ "{:,}".format(pack.credits) }}</div>
+        <div class="pack-credits-label">CREDITS</div>
+        <svg class="pack-coin" viewBox="0 0 64 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <ellipse cx="32" cy="36" rx="19" ry="7" fill="#4c1d95" stroke="#7c3aed" stroke-width="1.5"/>
+          <ellipse cx="32" cy="29" rx="19" ry="7" fill="#5b21b6" stroke="#8b5cf6" stroke-width="1.5"/>
+          <ellipse cx="32" cy="22" rx="19" ry="7" fill="#6d28d9" stroke="#a855f7" stroke-width="1.5"/>
+          <path d="M32 16l3.2 4-3.2 4-3.2-4z" fill="#e9d5ff"/>
+        </svg>
+        {% if pack.bonus %}
+        <div class="pack-bonus-badge">{{ pack.bonus|upper }}</div>
+        {% endif %}
+        <button class="pack-btn" onclick="buyPack('{{ pack.id }}')" id="pack-btn-{{ pack.id }}">
+          ${{ "%.2f"|format(pack.price) }}
+        </button>
+      </div>
+      {% endfor %}
+    </div>
+    <div style="text-align:center; color:#71717a; font-size:0.8rem;">
+      1,000 credits = $1 · Credits never expire · Payments processed securely via <strong style="color:#a855f7;">Stripe</strong>
+    </div>
+  </div>
+
+  <!-- ═══ LLM USAGE ═══ -->
+  <div id="section-llm" class="store-section">
+    <div class="llm-info-card">
+      <h3>🧠 Platform-Hosted LLMs</h3>
+      <p>
+        We provide API keys for <span class="highlight">OpenAI (GPT-4o)</span>,
+        <span class="highlight">Anthropic (Claude)</span>,
+        <span class="highlight">DeepSeek</span>,
+        <span class="highlight">xAI (Grok)</span>,
+        <span class="highlight">Google (Gemini)</span>, and more.
+      </p>
+      <p style="margin-top:0.75rem;">
+        Platform-hosted models are charged at <span class="highlight">2× the token cost</span> in credits.
+        For example, if a response costs $0.02 in tokens, you'll be charged <span class="highlight">3 credits</span>.
+      </p>
+    </div>
+    <div class="llm-info-card">
+      <h3>🎙 Voice Services (TTS &amp; STT)</h3>
+      <p>
+        Voice tools (<span class="highlight">Text to Speech</span> and <span class="highlight">Speech to Text</span>)
+        require API keys from providers like OpenAI, ElevenLabs, or Deepgram.
+      </p>
+      <p style="margin-top:0.75rem;">
+        Using <span class="highlight">platform-hosted API keys</span>: charged at <span class="highlight">2× the API cost</span> in credits per use.
+        <br>Using <span class="free-tag">your own API keys</span>: completely free after the one-time tool unlock.
+      </p>
+    </div>
+    <div class="llm-info-card">
+      <h3>🔑 Bring Your Own Key (BYOK)</h3>
+      <p>
+        Connect your own API keys in <a href="/settings" style="color:#818cf8; text-decoration:underline;">Settings → Connections</a>
+        and use LLMs and voice services <span class="free-tag">completely free</span> — no credit charges, no markup.
+      </p>
+      <p style="margin-top:0.75rem;">
+        BYOK supports any OpenAI-compatible endpoint: OpenAI, Anthropic, DeepSeek, Ollama (local), and more.
+      </p>
+    </div>
+    <div style="text-align:center; margin-top:1.5rem;">
+      <a href="/settings" style="display:inline-block; padding:0.65rem 2rem; background:#6366f1; color:#fff; border-radius:0.5rem; text-decoration:none; font-weight:600; font-size:0.9rem;">
+        Configure Connections →
+      </a>
+    </div>
+  </div>
+
+  <!-- ═══ HISTORY ═══ -->
+  <div id="section-history" class="store-section">
+    <p style="color:#a1a1aa; margin-bottom:1rem; font-size:0.9rem;">
+      Your recent credit transactions.
+    </p>
+    <div id="history-loading" style="color:#71717a; text-align:center; padding:2rem;">Loading history…</div>
+    <table class="history-table" id="history-table" style="display:none;">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Description</th>
+          <th>Amount</th>
+          <th>Balance</th>
+        </tr>
+      </thead>
+      <tbody id="history-tbody"></tbody>
+    </table>
+    <div id="history-empty" style="display:none; color:#71717a; text-align:center; padding:2rem;">
+      No transactions yet. Purchase credits to get started!
+    </div>
+  </div>
+</div>
+
+<script>
+  // ── Tab switching ──
+  function switchStoreTab(tab) {
+    document.querySelectorAll('.store-tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.store-section').forEach(function(s) { s.classList.remove('active'); });
+    event.currentTarget.classList.add('active');
+    var section = document.getElementById('section-' + tab);
+    if (section) section.classList.add('active');
+    if (tab === 'history') loadHistory();
+  }
+
+  // ── Credit pack data (server-rendered — authoritative source for GA value) ──
+  var CREDIT_PACKS = {{ credit_packs | tojson }};
+
+  // ── Fire Google Analytics purchase events after a successful checkout ──
+  function trackCreditsPurchase(packId, sessionId) {
+    if (typeof gtag !== 'function' || !packId) return;
+    var pack = null;
+    for (var i = 0; i < CREDIT_PACKS.length; i++) {
+      if (CREDIT_PACKS[i].id === packId) { pack = CREDIT_PACKS[i]; break; }
+    }
+    if (!pack) return;
+
+    // Dedupe: never fire twice for the same Stripe checkout session.
+    var txnId = sessionId || ('cs_' + Date.now());
+    var guardKey = 'ga_purchase_' + txnId;
+    try {
+      if (localStorage.getItem(guardKey)) return;
+      localStorage.setItem(guardKey, '1');
+    } catch (e) { /* private mode — fall through and still fire once */ }
+
+    var value = pack.price;
+
+    // 1) The GA4 ecommerce `purchase` (revenue) is sent server-side at Stripe
+    //    fulfillment (web/ga_measurement.py) so it is never missed or doubled.
+
+    // 2) Generic credit-purchase key event (fires for any pack)
+    gtag('event', 'PurchaseCredits', {
+      currency: 'USD',
+      value: value,
+      pack_id: pack.id,
+      credits: pack.credits
+    });
+
+    // Reddit Pixel purchase (Stripe session id dedupes against Reddit CAPI)
+    if (typeof rdt === 'function') {
+      rdt('track', 'Purchase', {
+        conversionId: txnId,
+        currency: 'USD',
+        value: value,
+        itemCount: 1,
+        products: [{ id: pack.id, name: pack.label, category: 'credits' }]
+      });
+    }
+
+    // 3) $5 starter-pack key event (pack_5 only)
+    if (pack.id === 'pack_5') {
+      gtag('event', 'Purchase5Credits', {
+        currency: 'USD',
+        value: value,
+        credits: pack.credits
+      });
+    }
+  }
+
+  // ── Check URL params ──
+  var params = new URLSearchParams(window.location.search);
+  if (params.get('credits_success') === '1') {
+    document.getElementById('credits-success-banner').style.display = 'block';
+    trackCreditsPurchase(params.get('pack'), params.get('sid'));
+    var _creditSid = params.get('sid');
+    window.history.replaceState({}, '', '/store');
+    // Fulfill immediately via the server (idempotent with the Stripe webhook)
+    // so credits show up right away even if the webhook is delayed/misconfigured.
+    if (_creditSid) {
+      fetch('/api/credits/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: _creditSid })
+      })
+      .then(function(r) { return r.json(); })
+      .then(function() { refreshBalance(); })
+      .catch(function() { refreshBalance(); });
+    } else {
+      refreshBalance();
+    }
+  }
+  if (params.get('credits_canceled') === '1') {
+    document.getElementById('credits-canceled-banner').style.display = 'block';
+    window.history.replaceState({}, '', '/store');
+  }
+
+  // ── Buy credit pack ──
+  function buyPack(packId) {
+    var btn = document.getElementById('pack-btn-' + packId);
+    var originalLabel = btn ? btn.textContent.trim() : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Redirecting…'; }
+    fetch('/api/credits/buy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pack_id: packId })
+    })
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      if (data.url) {
+        window.location.href = data.url;
+      } else if (data.error) {
+        alert('Error: ' + data.error);
+        if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+      }
+    })
+    .catch(function(err) {
+      alert('Failed to start checkout. Please try again.');
+      if (btn) { btn.disabled = false; btn.textContent = originalLabel; }
+    });
+  }
+
+  // ── Refresh credit balance ──
+  function refreshBalance() {
+    fetch('/api/credits/balance')
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      if (data.credits !== undefined) {
+        document.getElementById('credit-balance').textContent = data.credits;
+      }
+    })
+    .catch(function() {});
+  }
+
+  // ── Load history ──
+  var historyLoaded = false;
+  function loadHistory() {
+    if (historyLoaded) return;
+    fetch('/api/credits/history')
+    .then(function(resp) { return resp.json(); })
+    .then(function(data) {
+      historyLoaded = true;
+      document.getElementById('history-loading').style.display = 'none';
+      var rows = data.history || [];
+      if (rows.length === 0) {
+        document.getElementById('history-empty').style.display = 'block';
+        return;
+      }
+      document.getElementById('history-table').style.display = 'table';
+      var tbody = document.getElementById('history-tbody');
+      tbody.innerHTML = '';
+      rows.forEach(function(row) {
+        var tr = document.createElement('tr');
+        var ts = row.date || row.timestamp;
+        var dateStr = ts ? new Date(ts * 1000).toLocaleDateString() : '—';
+        var amtClass = row.amount > 0 ? 'credit-add' : 'credit-sub';
+        var amtStr = row.amount > 0 ? ('+' + row.amount) : String(row.amount);
+        var desc = row.description || row.reason || row.tool || '—';
+        tr.innerHTML = '<td>' + dateStr + '</td><td>' + desc + '</td><td class="' + amtClass + '">' + amtStr + '</td><td>' + (row.balance || '—') + '</td>';
+        tbody.appendChild(tr);
+      });
+    })
+    .catch(function() {
+      document.getElementById('history-loading').textContent = 'Failed to load history.';
+    });
+  }
+</script>
+{% endblock %}
