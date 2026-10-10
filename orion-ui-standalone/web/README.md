@@ -120,8 +120,8 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989 --reload
 | `PUT /api/profiles/{name}` | Update agent profile |
 | `POST /api/profiles` | Create new agent |
 | `POST /api/profiles/create` | New Agent wizard: name, one-line personality, values and boundaries write the profile, system prompt and Soul Script; an edited `system_prompt` or `soul_script` replaces the generated one. The Soul Script is reindexed after the response |
-| `POST /api/profiles/wizard-preview` | The system prompt and Soul Script skeleton the wizard would generate (writes nothing) |
-| `POST /api/profiles/codex-draft` | Codex Animus interviews the user one question at a time, then writes the `target` (`system_prompt` or `soul_script`) when `finish: true`; billed like chat |
+| `POST /api/profiles/wizard-preview` | The system prompt and Soul Script skeleton the wizard would generate, and `min_words` for each (475 and 2,175, Elysia's lengths). Writes nothing |
+| `POST /api/profiles/codex-draft` | Codex Animus interviews the user one question at a time, then writes the `target` (`system_prompt` or `soul_script`) when `finish: true`, at least as long as Elysia's. Returns `words`, `min_words` and `short`; `expand: true` rewrites a short `current` draft longer. With `agent` (an existing agent) it expands that agent's Soul Script instead (`original` is the script to grow; target is a fifth longer, at least 2,175 words). Billed like chat |
 | `DELETE /api/profiles/{name}` | Soft-delete agent (moves to 30-day trash) |
 | `GET /api/profiles/trash` | List trashed agents |
 | `POST /api/profiles/trash/{id}/restore` | Restore agent from trash |

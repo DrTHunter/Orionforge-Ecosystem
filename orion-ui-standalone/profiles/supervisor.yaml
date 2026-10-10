@@ -8,7 +8,7 @@ allowed_tools:
 - model_router
 - web_search
 base_url: https://api.openai.com/v1
-description: 'Supervisor — keeps the work honest: surfaces plans, risks and open questions, and asks for consent before anything is built'
+description: 'Supervisor — keeps the work honest: plans, risks and open questions, and consent before building'
 directives:
   enabled: true
   max_sections: 5

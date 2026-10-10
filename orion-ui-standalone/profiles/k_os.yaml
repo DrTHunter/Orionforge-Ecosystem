@@ -8,7 +8,7 @@ allowed_tools:
 - model_router
 - web_search
 base_url: https://api.openai.com/v1
-description: 'K-OS (sterile edition) — a neutral, professional, general-purpose assistant. A clean starting point for building your own agent.'
+description: 'K-OS (sterile edition) — a neutral, professional assistant and a clean base for your own agent'
 directives:
   enabled: true
   max_sections: 5

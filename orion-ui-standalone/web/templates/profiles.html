@@ -345,6 +345,130 @@
     transition: all 0.15s;
   }
 
+  /* ══ Agent view, dressed up ══
+     Each editor carries its agent's color as --agent; skin colors come in
+     as --s-* (base.html) with the default theme as fallback. */
+  .editor-view { --agent-soft: color-mix(in srgb, var(--agent, #6366f1) 22%, transparent); }
+  .agent-detail-panel {
+    background: var(--s-card, #0d1224);
+    border-color: color-mix(in srgb, var(--agent, #6366f1) 18%, rgba(255,255,255,0.06));
+    box-shadow: 0 30px 80px -30px color-mix(in srgb, var(--agent, #6366f1) 35%, transparent), 0 20px 50px rgba(0,0,0,0.35);
+  }
+  .agent-detail-header {
+    padding: 2.25rem 2.25rem 1.75rem; gap: 1.75rem; align-items: center;
+    background:
+      radial-gradient(120% 160% at 0% 0%, var(--agent-soft), transparent 55%),
+      radial-gradient(80% 120% at 100% 0%, color-mix(in srgb, var(--agent, #6366f1) 10%, transparent), transparent 60%);
+    border-bottom: 1px solid color-mix(in srgb, var(--agent, #6366f1) 15%, rgba(255,255,255,0.05));
+  }
+  .agent-detail-header .prof-avatar {
+    width: 6.25rem; height: 6.25rem; font-size: 2.4rem;
+    border: none;
+    box-shadow: 0 0 0 3px var(--s-card, #0d1224), 0 0 0 5px var(--agent, #6366f1),
+                0 14px 40px -8px color-mix(in srgb, var(--agent, #6366f1) 60%, transparent);
+  }
+  .agent-detail-header .prof-name-input { font-size: 1.95rem; letter-spacing: -0.02em; line-height: 1.15; }
+  .agent-detail-header .prof-name-input:focus { border-bottom-color: var(--agent, #818cf8); }
+  .agent-detail-header .prof-desc-input { font-size: 0.9rem; color: rgba(241,245,249,0.66); max-width: 46rem; }
+  .prof-stats { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.7rem; }
+  .prof-stat {
+    display: inline-flex; align-items: center; gap: 0.35rem; max-width: 100%;
+    padding: 0.22rem 0.65rem; border-radius: 999px; font-size: 0.7rem; font-weight: 600;
+    color: rgba(241,245,249,0.78); background: rgba(255,255,255,0.045);
+    border: 1px solid rgba(255,255,255,0.07); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .prof-stat i { font-style: normal; font-size: 0.72rem; }
+  .prof-stat.warn { color: #fbbf24; border-color: rgba(251,191,36,0.25); background: rgba(251,191,36,0.06); }
+  @media (max-width: 640px) {
+    .agent-detail-header { flex-direction: column; text-align: center; padding: 1.75rem 1.25rem 1.25rem; }
+    .agent-detail-header .prof-name-input { text-align: center; }
+    .agent-detail-header .prof-desc-input { text-align: center; }
+    .prof-stats { justify-content: center; }
+  }
+
+  /* Section jump bar: sticks under the page top while you scroll the sections */
+  .prof-nav {
+    position: sticky; top: 0; z-index: 6;
+    display: flex; gap: 0.3rem; overflow-x: auto; scrollbar-width: none;
+    padding: 0.6rem 2.25rem;
+    background: color-mix(in srgb, var(--s-card, #0d1224) 88%, transparent);
+    backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+  }
+  .prof-nav::-webkit-scrollbar { display: none; }
+  .prof-nav:empty { display: none; }
+  .prof-nav button {
+    flex-shrink: 0; border: 1px solid transparent; background: transparent; cursor: pointer;
+    font: 600 0.74rem/1 inherit; color: rgba(241,245,249,0.5);
+    padding: 0.42rem 0.8rem; border-radius: 999px; transition: all 0.15s;
+  }
+  .prof-nav button:hover { color: #f1f5f9; background: rgba(255,255,255,0.04); }
+  .prof-nav button.active {
+    color: #fff; background: var(--agent-soft);
+    border-color: color-mix(in srgb, var(--agent, #6366f1) 45%, transparent);
+  }
+  @media (max-width: 640px) { .prof-nav { padding: 0.5rem 1rem; } }
+
+  /* Sections: calm titles with a hairline, not shouting capitals */
+  .agent-detail-body { padding: 1.75rem 2.25rem 2.25rem; }
+  @media (max-width: 640px) { .agent-detail-body { padding: 1.25rem 1rem 1.5rem; } }
+  .agent-detail-body .modal-section-title {
+    display: flex; align-items: center; gap: 0.6rem;
+    font-size: 0.92rem; font-weight: 700; letter-spacing: 0; text-transform: none;
+    color: #f1f5f9; margin: 2.25rem 0 0.85rem; scroll-margin-top: 5.5rem;
+  }
+  .agent-detail-body .modal-section-title:first-child { margin-top: 0; }
+  .agent-detail-body .modal-section-title:not(.collapsible-header)::after {
+    content: ''; flex: 1; height: 1px;
+    background: linear-gradient(90deg, rgba(255,255,255,0.08), transparent);
+  }
+  .agent-detail-body .collapsible-header {
+    padding: 0.7rem 0.9rem; border-radius: 0.65rem;
+    background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.05);
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .agent-detail-body .collapsible-header:hover {
+    border-color: color-mix(in srgb, var(--agent, #6366f1) 35%, transparent);
+    background: rgba(255,255,255,0.035);
+  }
+  .agent-detail-body .collapsible-body.open { padding-top: 0.75rem; }
+
+  /* Settings cells read as pickers */
+  .agent-detail-body .config-cell { padding: 0.95rem 2.25rem 0.95rem 1.05rem; border-radius: 0.75rem;
+    transition: border-color 0.15s, transform 0.15s, background 0.15s; }
+  .agent-detail-body .config-cell:hover { transform: translateY(-1px); }
+  .agent-detail-body .config-cell:has(select)::after {
+    content: ''; position: absolute; right: 1rem; top: 50%; width: 0.45rem; height: 0.45rem;
+    border-right: 2px solid rgba(241,245,249,0.35); border-bottom: 2px solid rgba(241,245,249,0.35);
+    transform: translateY(-70%) rotate(45deg); pointer-events: none;
+  }
+  .agent-detail-body .config-cell-value { font-size: 0.92rem; }
+  .agent-detail-body .textarea-prompt { border-radius: 0.65rem; background: rgba(0,0,0,0.22); }
+  .agent-detail-body .textarea-prompt:focus { border-color: color-mix(in srgb, var(--agent, #6366f1) 70%, transparent); }
+
+  /* The collapse chevrons are Font Awesome icons, which this site doesn't load: draw them */
+  .agent-detail-body .collapse-chevron {
+    display: inline-block; width: 0.5rem; height: 0.5rem; margin: 0 0.2rem;
+    border-right: 2px solid rgba(241,245,249,0.45); border-bottom: 2px solid rgba(241,245,249,0.45);
+    transform: rotate(45deg) translate(-2px, -2px); transition: transform 0.25s ease, border-color 0.15s;
+  }
+  .agent-detail-body .collapse-chevron.open { transform: rotate(225deg) translate(-2px, -2px); }
+  .agent-detail-body .collapsible-header:hover .collapse-chevron { border-color: var(--agent, #a5b4fc); }
+
+  /* Save bar follows you down the page */
+  .editor-view .action-bar {
+    position: sticky; bottom: 0; z-index: 6; margin-top: 0;
+    padding: 0.85rem 1rem; border-top: 1px solid rgba(255,255,255,0.06);
+    background: color-mix(in srgb, var(--s-bg, #0a0a12) 82%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+    border-radius: 0.85rem 0.85rem 0 0;
+  }
+  .editor-view .action-bar .btn { white-space: nowrap; }
+  @media (max-width: 640px) {
+    .editor-view .action-bar { gap: 0.5rem; padding: 0.7rem 0.75rem; }
+    .editor-view .action-bar .btn { padding: 0.5rem 0.8rem; font-size: 0.78rem; }
+  }
+
   /* ── Config grid (model, voice, etc.) ── */
   .config-grid {
     display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;
@@ -604,6 +728,11 @@
   .wizard-msg.user { align-self: flex-end; background: #2a2a3a; color: #e4e4e7; }
   .wizard-msg.pending { opacity: 0.6; font-style: italic; }
   .wizard-error { color: #fca5a5; font-size: 0.75rem; margin-top: 0.5rem; min-height: 1rem; }
+  .wizard-meter { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.375rem; font-size: 0.6875rem; color: #a1a1aa; }
+  .wizard-meter .bar { flex: 1; height: 4px; border-radius: 2px; background: #2a2a3a; overflow: hidden; }
+  .wizard-meter .bar i { display: block; height: 100%; background: #f59e0b; transition: width 0.2s; }
+  .wizard-meter.ok { color: #6ee7b7; }
+  .wizard-meter.ok .bar i { background: #10b981; }
   .modal-note-list {
     flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;
     margin-bottom: 1rem;
@@ -878,11 +1007,11 @@
         <!-- Body -->
         <div class="agent-card-body">
           <div class="agent-card-name">{{ ad.display_name or name }}</div>
-          {% set summary = ad.description or profile_desc %}
+          {% set summary = ad.short %}
           {% if summary %}
           <div class="agent-card-role">{{ summary[:80] }}{% if summary|length > 80 %}…{% endif %}</div>
           {% endif %}
-          {% set narrative = profile_desc if (ad.description and profile_desc) else '' %}
+          {% set narrative = profile_desc if (ad.description and profile_desc and profile_desc != ad.description) else '' %}
           {% if narrative %}
           <div class="agent-card-desc">{{ narrative }}</div>
           {% elif not summary %}
@@ -927,14 +1056,13 @@
   {% set current_identity_profile = ad.profile.get('identity_faiss_profile', '') %}
   {% set current_memory_profile = ad.profile.get('memory_vault_profile', '') %}
   {% set current_tools = ad.profile.get('allowed_tools', []) %}
-  <div class="editor-view" id="editor-{{ name }}">
+  <div class="editor-view" id="editor-{{ name }}" style="--agent: {{ agent_color }};">
 
     <!-- ═══ Modal-style Agent Detail Panel ═══ -->
     <div class="agent-detail-panel">
 
       <!-- Header — gradient banner + avatar + name/desc -->
-      <div class="agent-detail-header"
-           style="background: linear-gradient(135deg, {{ agent_color }}22 0%, {{ agent_color }}08 60%, transparent 100%);">
+      <div class="agent-detail-header">
         <div class="prof-avatar" id="avatar-{{ name }}"
              style="background: {{ agent_color }};"
              onclick="toggleAvatarMenu('{{ name }}', event)">
@@ -989,9 +1117,13 @@
                     placeholder="Short description — what does this agent do?"
                     maxlength="200" rows="2"
                     oninput="autoResizeDesc(this)"
-                    onchange="saveField('{{ name }}', 'description', this.value)">{{ ad.description or '' }}</textarea>
+                    onchange="saveField('{{ name }}', 'description', this.value)">{{ ad.short or '' }}</textarea>
+          <!-- At-a-glance chips, filled in by refreshProfStats() -->
+          <div class="prof-stats" id="stats-{{ name }}"></div>
         </div>
       </div>
+      <!-- Section jump bar, built by buildProfNav() from the section titles below -->
+      <nav class="prof-nav" id="prof-nav-{{ name }}"></nav>
 
       <!-- Body — all config sections -->
       <div class="agent-detail-body">
@@ -1111,10 +1243,14 @@
                     placeholder="The deep identity layer. Split it into ### sections — each one is retrieved on its own when the conversation calls for it:&#10;&#10;### Origin&#10;Where they came from, their backstory, what shaped them.&#10;&#10;### Core Truths&#10;The beliefs and values they won't bend on.&#10;&#10;### Voice&#10;Speech patterns, favorite phrases, quirks, and a few example lines.&#10;&#10;### Relationships&#10;How they see the user and the other agents.&#10;&#10;### Behavioral Modes&#10;How they act when playful, serious, challenged, or someone is hurting.&#10;&#10;### Boundaries&#10;What they refuse to do, and how they say no in character.&#10;&#10;Not sure what to write? Ask Codex Animus to help you build it."
                     onchange="saveField('{{ name }}', 'soul_script_text', this.value)"
           >{{ ad.soul_script }}</textarea>
+          <button class="btn btn-secondary wizard-codex-btn" style="margin-top:0.5rem;" onclick="openSoulGrow('{{ name }}')">
+            <img src="/uploads/avatar_codex_animus_forge2026.jpg" alt="" onerror="this.remove()">
+            Expand with Codex Animus
+          </button>
           <div class="field-hint">
             The agent's deep identity layer — personality, lore, behavioral modes, and core truths.
             Automatically indexed into FAISS memory and semantically retrieved during chat for this agent only.
-            Codex Animus can help you write one — just ask it in chat.
+            Codex Animus can interview you and expand it: it keeps what's there and goes deeper.
           </div>
         </div>
 
@@ -1235,6 +1371,42 @@
   </div>
 </div>
 
+<!-- ═══ EXPAND SOUL SCRIPT (agent view) ═══ -->
+<div class="modal-overlay" id="grow-modal">
+  <div class="modal-box wizard-box">
+    <div class="modal-title" style="display:flex; justify-content:space-between; align-items:baseline;">
+      <span>Expand <span id="grow-agent"></span>'s Soul Script</span>
+      <span class="wizard-steps" id="grow-steps"><span data-step="1">1 Interview</span><span data-step="2">2 Review</span></span>
+    </div>
+    <div class="wizard-body">
+      <div class="wizard-step" data-step="1">
+        <div class="field-hint" style="font-size:0.75rem; margin-bottom:0.5rem;" id="grow-intro"></div>
+        <div class="wizard-chat" id="grow-chat"></div>
+        <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+          <input type="text" class="text-input" id="grow-answer" placeholder="Your answer…"
+                 onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); growAnswer(); }">
+          <button class="btn btn-primary" id="grow-answer-btn" onclick="growAnswer()">Send</button>
+        </div>
+        <div class="field-hint" id="grow-hint" style="margin-top:0.5rem;">Answer a few questions, then have Codex write the expanded version.</div>
+      </div>
+      <div class="wizard-step" data-step="2">
+        <label class="field-label">Expanded Soul Script (edit freely before saving)</label>
+        <textarea class="textarea-prompt soul-script" id="grow-text" style="min-height:16rem;"></textarea>
+        <div class="wizard-meter" id="grow-meter"></div>
+      </div>
+      <div class="wizard-error" id="grow-error"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:1rem;">
+      <button class="btn btn-secondary" id="grow-cancel" onclick="closeSoulGrow()">Cancel</button>
+      <span style="display:flex; gap:0.75rem;">
+        <button class="btn btn-secondary" id="grow-back" onclick="growShow(1)">Keep talking</button>
+        <button class="btn btn-primary" id="grow-write" onclick="growWrite()">Write the expanded version</button>
+        <button class="btn btn-primary" id="grow-save" onclick="growSave()">Save &amp; apply</button>
+      </span>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ NEW AGENT MODAL ═══ -->
 <div class="modal-overlay" id="new-agent-modal">
   <div class="modal-box wizard-box">
@@ -1283,18 +1455,20 @@
       <div class="wizard-step" data-step="3">
         <label class="field-label">System Prompt</label>
         <textarea class="textarea-prompt wizard-editor" id="wizard-prompt" style="min-height:12rem;"></textarea>
+        <div class="wizard-meter" id="wizard-prompt-meter"></div>
         <div class="field-hint">
           The always-on base instruction: role, personality, tone, what they help with and what they won't do.
-          Written from steps 1 and 2. Edit it here, or have Codex Animus draft it.
+          It has to be at least as long as Elysia's. Build on the starter above, or have Codex Animus draft it.
         </div>
       </div>
       <!-- Step 4: Soul Script -->
       <div class="wizard-step" data-step="4">
         <label class="field-label">Soul Script</label>
         <textarea class="textarea-prompt soul-script wizard-editor" id="wizard-soul" style="min-height:12rem;"></textarea>
+        <div class="wizard-meter" id="wizard-soul-meter"></div>
         <div class="field-hint">
           The deep identity layer. Each <code>###</code> section is retrieved on its own during chat.
-          Fill in the skeleton, or have Codex Animus interview you and write it.
+          It has to be at least as long as Elysia's. Fill in the skeleton, or have Codex Animus interview you and write it.
         </div>
       </div>
       <!-- Codex Animus, shared by steps 3 and 4 -->
@@ -1456,10 +1630,84 @@
             if (sp && data.system_prompt) sp.value = data.system_prompt;
             if (ss && data.soul_script) ss.value = data.soul_script;
             _promptsReady.add(name);
+            refreshProfStats(name);
           })
           .catch(() => _promptsLoaded.delete(name));
       }
+      buildProfNav(name);
+      refreshProfStats(name);
     }
+  }
+
+  // ── Agent view: at-a-glance chips and the section jump bar ──
+  function _profWords(text) { const t = (text || '').trim(); return t ? t.split(/\s+/).length : 0; }
+  function refreshProfStats(name) {
+    const box = document.getElementById('stats-' + name);
+    if (!box) return;
+    const model = (document.getElementById('model-display-' + name)?.textContent || '').trim();
+    const tools = document.querySelectorAll(`#tools-grid-${name} .tool-toggle-switch.on`).length;
+    const soul = _profWords(document.getElementById('soul-' + name)?.value);
+    const prompt = _profWords(document.getElementById('prompt-' + name)?.value);
+    const noModel = !model || model.startsWith('—');
+    const chips = [
+      ['⚡', noModel ? 'No model set' : model, noModel],
+      ['🛠', tools + ' tool' + (tools === 1 ? '' : 's')],
+    ];
+    if (_promptsReady.has(name)) {
+      chips.push(['📜', prompt.toLocaleString() + '-word prompt']);
+      chips.push(['🧬', soul.toLocaleString() + '-word Soul Script']);
+    }
+    box.innerHTML = '';
+    for (const [icon, label, warn] of chips) {
+      const chip = document.createElement('span');
+      chip.className = 'prof-stat' + (warn ? ' warn' : '');
+      chip.innerHTML = '<i></i><span></span>';
+      chip.firstChild.textContent = icon;
+      chip.lastChild.textContent = label;
+      box.appendChild(chip);
+    }
+  }
+  const _profNavObservers = {};
+  function buildProfNav(name) {
+    const nav = document.getElementById('prof-nav-' + name);
+    const editor = document.getElementById('editor-' + name);
+    if (!nav || !editor || nav.dataset.built) return;
+    nav.dataset.built = '1';
+    const titles = [...editor.querySelectorAll('.agent-detail-body .modal-section-title')];
+    titles.forEach((t, i) => {
+      t.id = t.id || `sec-${name}-${i}`;
+      // The title's own words: its direct text, or its first span (counts and badges sit in later spans).
+      const own = [...t.childNodes].filter(n => n.nodeType === 3).map(n => n.textContent).join(' ').trim()
+        || t.querySelector('span')?.textContent || t.textContent;
+      const label = own.replace(/[^\p{L}\p{N}&' ]/gu, ' ').replace(/\s+/g, ' ').trim();
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.dataset.target = t.id;
+      btn.onclick = () => {
+        // Open a collapsed section before jumping to it.
+        const body = t.classList.contains('collapsible-header') && t.nextElementSibling;
+        if (body && !body.classList.contains('open')) t.click();
+        t.scrollIntoView({behavior: 'smooth', block: 'start'});
+      };
+      nav.appendChild(btn);
+    });
+    if (!('IntersectionObserver' in window)) return;
+    const seen = new Map();
+    _profNavObservers[name] = new IntersectionObserver(entries => {
+      entries.forEach(e => seen.set(e.target.id, e.isIntersecting));
+      const current = titles.find(t => seen.get(t.id)) || null;
+      if (!current) return;
+      nav.querySelectorAll('button').forEach(b => b.classList.toggle('active', b.dataset.target === current.id));
+      // Slide the bar sideways only; scrollIntoView here would cancel the page's smooth scroll.
+      const act = nav.querySelector('button.active');
+      if (act) nav.scrollTo({left: act.offsetLeft - (nav.clientWidth - act.offsetWidth) / 2, behavior: 'smooth'});
+    }, {rootMargin: '-15% 0px -60% 0px'});
+    titles.forEach(t => _profNavObservers[name].observe(t));
+    // Keep the chips honest as things change.
+    editor.addEventListener('change', () => refreshProfStats(name));
+    editor.addEventListener('click', e => { if (e.target.closest('.tool-toggle-card')) setTimeout(() => refreshProfStats(name), 0); });
+    editor.addEventListener('input', e => { if (e.target.matches('.textarea-prompt')) refreshProfStats(name); });
   }
 
   // ── Avatar / Color ──
@@ -2260,6 +2508,32 @@
   let _codexTranscript = [];
   let _codexBusy = false;
   let _wizardPreview = null;
+  // The minimum for both texts: Elysia's lengths. The server sends the same numbers with the preview.
+  let _wizardMin = {system_prompt: 475, soul_script: 2175};
+
+  function _words(text) {
+    const t = (text || '').trim();
+    return t ? t.split(/\s+/).length : 0;
+  }
+  function _wizardMeter(t) {
+    const ed = document.getElementById(t.editor);
+    const meter = document.getElementById(t.editor + '-meter');
+    const n = _words(ed.value), min = _wizardMin[t.target];
+    meter.classList.toggle('ok', n >= min);
+    meter.innerHTML = '<span class="bar"><i></i></span><span></span>';
+    meter.querySelector('i').style.width = Math.min(100, Math.round(100 * n / min)) + '%';
+    meter.lastChild.textContent = n.toLocaleString() + ' / ' + min.toLocaleString()
+      + ' words' + (n >= min ? ' ✓' : ' (the minimum is Elysia\'s length)');
+    return n >= min;
+  }
+  // Can't move past a text that's shorter than Elysia's.
+  function _wizardTooShort(t) {
+    if (_wizardMeter(t)) return false;
+    const n = _words(document.getElementById(t.editor).value), min = _wizardMin[t.target];
+    _wizardError('The ' + t.label + ' needs at least ' + min.toLocaleString() + ' words (as long as Elysia\'s); it has '
+      + n.toLocaleString() + '. Have Codex Animus draft it, or keep writing.');
+    return true;
+  }
 
   function _agentSlug(raw) {
     return raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
@@ -2288,9 +2562,11 @@
       if (!resp.ok) return;
       _wizardPreview = await resp.json();
     } catch (e) { return; }
+    if (_wizardPreview.min_words) _wizardMin = _wizardPreview.min_words;
     for (const t of Object.values(WIZARD_TARGETS)) {
       const ed = document.getElementById(t.editor);
       if (!ed.dataset.edited) ed.value = _wizardPreview[t.target] || '';
+      _wizardMeter(t);
     }
   }
   function resetWizardEditor() {
@@ -2299,6 +2575,7 @@
     const ed = document.getElementById(t.editor);
     ed.value = _wizardPreview[t.target] || '';
     delete ed.dataset.edited;
+    _wizardMeter(t);
   }
 
   function _wizardShow(step) {
@@ -2330,6 +2607,7 @@
       if (!/^[a-z0-9_]{1,40}$/.test(f.name)) return _wizardError('Use letters, numbers, spaces or underscores.');
       if (!f.personality) return _wizardError('Describe their personality in one line.');
     }
+    if (delta > 0 && WIZARD_TARGETS[_wizardStep] && _wizardTooShort(WIZARD_TARGETS[_wizardStep])) return;
     const next = Math.min(WIZARD_LAST, Math.max(1, _wizardStep + delta));
     if (WIZARD_TARGETS[next] && !WIZARD_TARGETS[_wizardStep]) await _wizardFillEditors();
     _wizardShow(next);
@@ -2364,7 +2642,10 @@
     if (e.key === 'Enter') { e.preventDefault(); wizardGo(1); }
   });
   document.querySelectorAll('#new-agent-modal .wizard-editor').forEach(ed =>
-    ed.addEventListener('input', () => { ed.dataset.edited = '1'; }));
+    ed.addEventListener('input', () => {
+      ed.dataset.edited = '1';
+      _wizardMeter(Object.values(WIZARD_TARGETS).find(t => t.editor === ed.id));
+    }));
 
   // ── Draft with Codex Animus ──
   // One transcript for both steps, so what Codex learns writing the prompt
@@ -2383,12 +2664,12 @@
     ['wizard-answer', 'wizard-answer-btn', 'wizard-write-btn', 'wizard-create', 'wizard-next', 'wizard-back']
       .forEach(id => { document.getElementById(id).disabled = busy; });
   }
-  async function _codexRequest(finish) {
+  async function _codexRequest(finish, expand) {
     const t = WIZARD_TARGETS[_wizardStep];
     const resp = await fetch('/api/profiles/codex-draft', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({
-        ..._wizardFields(), target: t.target, finish, transcript: _codexTranscript,
+        ..._wizardFields(), target: t.target, finish, expand: !!expand, transcript: _codexTranscript,
         current: document.getElementById(t.editor).value,
       }),
     });
@@ -2437,13 +2718,25 @@
     const t = WIZARD_TARGETS[_wizardStep];
     _codexSetBusy(true);
     _wizardError('');
-    const pending = _codexBubble('codex', 'Writing the ' + t.label + '…', true);
+    const pending = _codexBubble('codex', 'Writing the ' + t.label + '… (a full one takes a minute or two)', true);
     try {
-      const data = await _codexRequest(true);
       const ed = document.getElementById(t.editor);
+      let data = await _codexRequest(true);
       ed.value = data[t.target];
       ed.dataset.edited = '1';
-      _codexBubble('codex', 'Done. The ' + t.label + ' is in the editor above; change anything you like.');
+      _wizardMeter(t);
+      // Too short for Elysia's length: ask Codex to expand it, a couple of times at most.
+      for (let round = 1; data.short && round <= 2; round++) {
+        pending.textContent = 'Expanding it: ' + data.words.toLocaleString() + ' of '
+          + data.min_words.toLocaleString() + ' words so far…';
+        data = await _codexRequest(true, true);
+        ed.value = data[t.target];
+        _wizardMeter(t);
+      }
+      _codexBubble('codex', data.short
+        ? 'It came out at ' + data.words.toLocaleString() + ' words, short of ' + data.min_words.toLocaleString()
+          + '. Write it again, or add to it in the editor above.'
+        : 'Done: ' + data.words.toLocaleString() + ' words. The ' + t.label + ' is in the editor above; change anything you like.');
       document.getElementById('wizard-interview').style.display = 'none';
       document.getElementById('wizard-codex-start').style.display = '';
     } catch (err) {
@@ -2458,6 +2751,11 @@
     if (_codexBusy) return;
     const f = _wizardFields();
     if (!f.name) return _wizardShow(1);
+    if (_wizardTooShort(WIZARD_TARGETS[4])) return;
+    if (!_wizardMeter(WIZARD_TARGETS[3])) {
+      _wizardShow(3);
+      return _wizardTooShort(WIZARD_TARGETS[3]);
+    }
     const btn = document.getElementById('wizard-create');
     btn.disabled = true;
     btn.textContent = 'Creating…';
@@ -2485,6 +2783,168 @@
     btn.textContent = 'Create Agent';
     _wizardError(err.error || 'Failed to create agent');
   }
+
+  // ── Expand an existing Soul Script with Codex Animus (agent view) ──
+  // Codex reads the agent's prompt and Soul Script, interviews the user about
+  // what to deepen, then rewrites it in full: everything kept, a fifth longer
+  // at least. Nothing is saved until the user approves the result.
+  const GROW = {agent: '', original: '', transcript: [], busy: false, min: 0};
+
+  function _growBubble(role, text, pending) {
+    const chat = document.getElementById('grow-chat');
+    const el = document.createElement('div');
+    el.className = 'wizard-msg ' + role + (pending ? ' pending' : '');
+    el.textContent = text;
+    chat.appendChild(el);
+    chat.scrollTop = chat.scrollHeight;
+    return el;
+  }
+  function _growBusy(busy) {
+    GROW.busy = busy;
+    ['grow-answer', 'grow-answer-btn', 'grow-write', 'grow-save', 'grow-back']
+      .forEach(id => { document.getElementById(id).disabled = busy; });
+  }
+  function _growError(msg) { document.getElementById('grow-error').textContent = msg || ''; }
+  function growShow(step) {
+    document.querySelectorAll('#grow-modal .wizard-step').forEach(el => el.classList.toggle('active', +el.dataset.step === step));
+    document.querySelectorAll('#grow-steps span').forEach(el => {
+      el.classList.toggle('active', +el.dataset.step === step);
+      el.classList.toggle('done', +el.dataset.step < step);
+    });
+    document.getElementById('grow-write').style.display = step === 1 ? '' : 'none';
+    document.getElementById('grow-back').style.display = step === 2 ? '' : 'none';
+    document.getElementById('grow-save').style.display = step === 2 ? '' : 'none';
+    _growError('');
+    if (step === 1) document.getElementById('grow-answer').focus();
+    else _growMeter();
+  }
+  function _growMeter() {
+    const n = _words(document.getElementById('grow-text').value), was = _words(GROW.original), min = GROW.min;
+    const meter = document.getElementById('grow-meter');
+    meter.classList.toggle('ok', n >= min);
+    meter.innerHTML = '<span class="bar"><i></i></span><span></span>';
+    meter.querySelector('i').style.width = Math.min(100, Math.round(100 * n / (min || 1))) + '%';
+    meter.lastChild.textContent = was.toLocaleString() + ' → ' + n.toLocaleString() + ' words'
+      + (n >= min ? ' ✓' : ' (aim for ' + min.toLocaleString() + ')');
+  }
+  async function _growRequest(extra) {
+    const resp = await fetch('/api/profiles/codex-draft', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({target: 'soul_script', agent: GROW.agent, original: GROW.original,
+                            transcript: GROW.transcript, ...extra}),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Codex Animus is unavailable right now.');
+    return data;
+  }
+  async function _growAsk() {
+    _growBusy(true);
+    const pending = _growBubble('codex', 'Codex Animus is reading it…', true);
+    try {
+      const data = await _growRequest({});
+      GROW.transcript.push({role: 'codex', text: data.question});
+      _growBubble('codex', data.question);
+      if (GROW.transcript.filter(t => t.role === 'user').length >= 3) {
+        document.getElementById('grow-hint').textContent = 'That may be enough. Keep going, or have Codex write it.';
+      }
+    } catch (err) {
+      _growError(err.message);
+    } finally {
+      pending.remove();
+      _growBusy(false);
+      document.getElementById('grow-answer').focus();
+    }
+  }
+  async function openSoulGrow(agent) {
+    const ed = document.getElementById('soul-' + agent);
+    if (!_promptsReady.has(agent)) {
+      // The editor loads lazily; make sure we expand what's actually saved.
+      try {
+        const data = await (await fetch('/api/profiles/' + encodeURIComponent(agent))).json();
+        if (ed && data.soul_script && !ed.value) ed.value = data.soul_script;
+      } catch (e) {}
+    }
+    GROW.agent = agent;
+    GROW.original = ed ? ed.value : '';
+    GROW.transcript = [];
+    const was = _words(GROW.original);
+    GROW.min = Math.max(_wizardMin.soul_script, Math.round(was * 1.2));
+    const display = document.getElementById('name-' + agent)?.value || agent;
+    document.getElementById('grow-agent').textContent = display;
+    document.getElementById('grow-intro').textContent = 'Now ' + was.toLocaleString() + ' words. Codex reads it, asks what to deepen, '
+      + 'then rewrites it in full: everything kept, at least ' + GROW.min.toLocaleString() + ' words. Nothing is saved until you approve it.';
+    document.getElementById('grow-chat').innerHTML = '';
+    document.getElementById('grow-text').value = '';
+    document.getElementById('grow-hint').textContent = 'Answer a few questions, then have Codex write the expanded version.';
+    document.getElementById('grow-modal').classList.add('open');
+    growShow(1);
+    _growAsk();
+  }
+  function closeSoulGrow() {
+    if (GROW.busy) return;
+    document.getElementById('grow-modal').classList.remove('open');
+  }
+  function growAnswer() {
+    const input = document.getElementById('grow-answer');
+    const text = input.value.trim();
+    if (!text || GROW.busy) return;
+    input.value = '';
+    GROW.transcript.push({role: 'user', text});
+    _growBubble('user', text);
+    _growAsk();
+  }
+  async function growWrite() {
+    if (GROW.busy) return;
+    _growBusy(true);
+    _growError('');
+    const pending = _growBubble('codex', 'Rewriting the Soul Script… (a full one takes a minute or two)', true);
+    try {
+      let data = await _growRequest({finish: true});
+      GROW.min = data.min_words || GROW.min;
+      for (let round = 1; data.short && round <= 2; round++) {
+        pending.textContent = 'Expanding it: ' + data.words.toLocaleString() + ' of ' + data.min_words.toLocaleString() + ' words so far…';
+        data = await _growRequest({expand: true, current: data.soul_script});
+      }
+      document.getElementById('grow-text').value = data.soul_script;
+      growShow(2);
+      if (data.short) _growError('It came out at ' + data.words.toLocaleString() + ' words, short of '
+        + data.min_words.toLocaleString() + '. Keep talking and write it again, or add to it here.');
+    } catch (err) {
+      _growError(err.message);
+    } finally {
+      pending.remove();
+      _growBusy(false);
+    }
+  }
+  async function growSave() {
+    if (GROW.busy) return;
+    const text = document.getElementById('grow-text').value.trim();
+    if (_words(text) < _words(GROW.original)) {
+      return _growError('This is shorter than the current Soul Script. Expanding should only add.');
+    }
+    _growBusy(true);
+    const btn = document.getElementById('grow-save');
+    btn.textContent = 'Saving…';
+    try {
+      const resp = await fetch('/api/profiles/' + encodeURIComponent(GROW.agent) + '/config', {
+        method: 'PUT', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({soul_script_text: text}),
+      });
+      if (!resp.ok) throw new Error('Save failed (HTTP ' + resp.status + ')');
+      const ed = document.getElementById('soul-' + GROW.agent);
+      if (ed) ed.value = text;
+      _promptsReady.add(GROW.agent);
+      GROW.busy = false;
+      closeSoulGrow();
+      showSaveResultModal(true, 'The expanded Soul Script is saved and re-indexed.');
+    } catch (err) {
+      _growError(err.message);
+    } finally {
+      btn.textContent = 'Save & apply';
+      _growBusy(false);
+    }
+  }
+  document.getElementById('grow-text').addEventListener('input', _growMeter);
 
   // ── Delete Agent ──
   let _deleteAgentName = null;

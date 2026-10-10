@@ -2569,6 +2569,18 @@ async def page_chat(request: Request):
         "chat_defaults": settings.get("chat_defaults", {}),
     })
 
+def _short_description(name: str, cfg: dict, profile: dict) -> str:
+    """The one-liner shown for an agent: its own, its profile's, or its prompt's first sentence."""
+    desc = (cfg.get("description") or (profile or {}).get("description") or "").strip()
+    if desc:
+        return desc
+    prompt = " ".join(_load_system_prompt(name).split())
+    if not prompt:
+        return ""
+    first = re.split(r"(?<=[.!?])\s", prompt, maxsplit=1)[0]
+    return first if len(first) <= 100 else first[:99].rsplit(" ", 1)[0] + "…"
+
+
 @app.get("/profiles", response_class=HTMLResponse)
 async def page_profiles(request: Request):
     agents = _list_unlocked_agents(request)
@@ -2583,6 +2595,7 @@ async def page_profiles(request: Request):
             "soul_script": "",
             "display_name": cfg.get("display_name", name),
             "description": cfg.get("description", ""),
+            "short": _short_description(name, cfg, profile),
         }
     store = _load_connections()
     all_models = []
@@ -6009,16 +6022,31 @@ def _reindex_soul_scripts_later():
     task.add_done_callback(_soul_reindex_tasks.discard)
 
 
+# The wizard's yardstick: a new agent's prompt and Soul Script are at least as long
+# as Elysia's (her lengths, rounded up).
+WIZARD_MIN_WORDS = {"system_prompt": 475, "soul_script": 2175}
+
+
+def _word_count(text: str) -> int:
+    return len((text or "").split())
+
+
+def _wizard_min_words() -> dict:
+    return dict(WIZARD_MIN_WORDS)
+
+
 @app.post("/api/profiles/wizard-preview")
 async def api_profile_wizard_preview(request: Request):
-    """The system prompt and Soul Script skeleton the wizard would write."""
+    """The system prompt and Soul Script skeleton the wizard would write, and the
+    minimum length (in words) each has to reach."""
     body = await request.json()
     display = _agent_display_name(_agent_slug(body.get("name"))) or "New Agent"
     personality = str(body.get("personality", "")).strip()[:300]
     values = _wizard_list(body.get("values"))
     boundaries = _wizard_list(body.get("boundaries"))
     return {"system_prompt": _wizard_system_prompt(display, personality, values, boundaries),
-            "soul_script": _wizard_soul_script(display, personality, values, boundaries)}
+            "soul_script": _wizard_soul_script(display, personality, values, boundaries),
+            "min_words": _wizard_min_words()}
 
 
 @app.post("/api/profiles/create")
@@ -6096,10 +6124,14 @@ _CODEX_TARGETS = {
         "focus": (" The system prompt is the agent's always-on base instruction: role,"
                   " personality, tone, how they talk, what they help with and what they won't do."),
         "write": """Now write the system prompt for {display} from everything above.
-Address the agent in second person ("You are {display}..."), 120-350 words of
-plain prose, covering role, personality, tone, how they talk, what they help
-with, and what they won't do. Keep lore and long backstory out: that belongs in
-the Soul Script.
+It must be at least {min_words} words: as long as Elysia's, the reference agent.
+Address the agent in second person ("You are {display}..."), in several paragraphs
+of plain prose covering: identity and role; personality and temperament; how they
+talk (tone, sentence length, quirks, words they use or avoid); their interests and
+what they know; how they treat the user; their humor; how they handle being
+challenged or disrespected; what they help with; and what they refuse, and how.
+Be concrete and specific to {display}, not generic. Keep long backstory and lore
+out: that belongs in the Soul Script.
 Reply with only the system prompt: no preamble, no headings, no code fences.""",
     },
     "soul_script": {
@@ -6108,18 +6140,53 @@ Reply with only the system prompt: no preamble, no headings, no code fences.""",
                   " truths, voice (speech patterns, example lines), how they relate to the user,"
                   " behavioral modes (playful, serious, challenged, someone hurting) and boundaries."),
         "write": """Now write the Soul Script for {display} from everything above.
+It must be at least {min_words} words: as long as Elysia's, the reference agent.
 Write it in {display}'s own first-person voice, as Markdown. Start with
-"# Soul Script: {display}", then these ### sections, 4-12 lines each:
-### Origin, ### Core Truths, ### Voice, ### Relationships, ### Behavioral Modes, ### Boundaries.
-Add other ### sections if the interview calls for them. Each section must make
-sense on its own, because each one is retrieved separately.
+"# Soul Script: {display}", then 8 to 14 ### sections of roughly 150-300 words
+each. For example: ### Origin and Purpose, ### How I Relate, ### Voice (with
+example lines), one ### section per behavioral mode (gentle, default, intense,
+named in {display}'s own terms), ### Core Truths, ### Effort and Growth,
+### Care, ### Who I Am To You, ### Mythos, ### Boundaries. Rename, merge or add
+sections to fit {display}. Be concrete: situations, reactions, phrases they would
+say. Each section must make sense on its own, because each one is retrieved separately.
 Reply with only the Soul Script: no preamble and no code fences.""",
     },
 }
 
+_CODEX_EXPAND = """Here is your draft of {target_name} for {display}. It is {words} words, and
+it must be at least {min_words}. Rewrite it in full and longer:
+keep everything that is there, and go deeper with concrete detail, situations,
+example lines and nuance, in the same format. Reply with only the full text.
+---
+{current}
+---"""
+
+# Expanding an existing agent's Soul Script from the agent view.
+_CODEX_GROW_INTERVIEW = """You are helping the user expand the existing Soul Script of {display}, an agent
+they already have. Its system prompt and current Soul Script ({words} words) are below.
+Ask ONE short, specific question at a time about what to deepen or add: thin
+sections, missing behavioral modes, backstory, voice and example lines,
+relationships, boundaries. Your first question can name the thinnest parts you see.
+Don't ask about what the script already says. Keep your own voice as Codex
+Animus, in 1-3 sentences. Reply with only the question."""
+
+_CODEX_GROW_WRITE = """Now rewrite {display}'s Soul Script in full, from the current version and
+everything the user told you. It must be at least {min_words} words. Keep every
+existing section and everything in it that still fits: expand, don't replace.
+Weave in the new material, deepen the thin sections with concrete detail,
+situations and example lines, and add new ### sections where the interview calls
+for them. Same first-person voice, title line and Markdown format; each ###
+section must make sense on its own, because each one is retrieved separately.
+Reply with only the Soul Script: no preamble and no code fences."""
+
+
+def _soul_grow_target(original: str) -> int:
+    """An expanded Soul Script is a fifth longer than it was, and never under the wizard minimum."""
+    return max(WIZARD_MIN_WORDS["soul_script"], round(_word_count(original) * 1.2))
+
 
 async def _billed_completion(request: Request, conn: dict, model: str, messages: list[dict],
-                             agent: str, label: str, temperature: float = 0.7):
+                             agent: str, label: str, temperature: float = 0.7, timeout: float = 120):
     """One chat completion, metered and charged the way /api/chat/send does it.
 
     Returns ``(text, None)``, or ``(None, JSONResponse)`` on failure.
@@ -6137,7 +6204,7 @@ async def _billed_completion(request: Request, conn: dict, model: str, messages:
     if conn.get("api_key"):
         headers["Authorization"] = f"Bearer {conn['api_key']}"
     try:
-        async with httpx.AsyncClient(timeout=120) as client:
+        async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json={"model": model, "messages": messages,
                                                 "temperature": temperature}, headers=headers)
             resp.raise_for_status()
@@ -6177,8 +6244,10 @@ async def api_profile_codex_draft(request: Request):
 
     Body: ``target`` (``"system_prompt"`` or ``"soul_script"``), ``name``,
     ``personality``, ``values``, ``boundaries``, ``current`` (the draft so far),
-    ``transcript`` (``[{role: "codex" | "user", text}]``) and ``finish``.
-    Returns the next ``question``, or ``{target: text}`` when ``finish`` is true.
+    ``transcript`` (``[{role: "codex" | "user", text}]``), and ``finish`` or
+    ``expand`` (rewrite ``current`` longer). Returns the next ``question``, or
+    ``{target: text, words, min_words, short}`` when writing. Drafts must reach
+    Elysia's length; when one comes back ``short``, the wizard asks to ``expand`` it.
     """
     body = await request.json()
     uid = _get_user_id(request)
@@ -6193,6 +6262,7 @@ async def api_profile_codex_draft(request: Request):
         return JSONResponse({"error": "No API connection available. Add one in Settings."}, 400)
     spec = _CODEX_TARGETS[target]
     display = _agent_display_name(_agent_slug(body.get("name")))[:60] or "the new agent"
+    min_words = _wizard_min_words()[target]
     fields = {
         "display": display,
         "personality": str(body.get("personality", "")).strip()[:300] or "(not given)",
@@ -6200,12 +6270,34 @@ async def api_profile_codex_draft(request: Request):
         "boundaries": "; ".join(_wizard_list(body.get("boundaries"))) or "(not given)",
         "target_name": spec["name"],
         "focus": spec["focus"],
+        "min_words": min_words,
     }
     persona = _load_system_prompt(codex, user_id=uid)
     codex_soul = _load_soul_script(codex, user_id=uid)[:6000]
     system = f"{persona}\n\n{codex_soul}\n\n{_CODEX_INTERVIEW.format(**fields)}"
-    current = str(body.get("current", "")).strip()[:8000]
-    if current:
+    current = str(body.get("current", "")).strip()[:30000]
+    expand = bool(body.get("expand")) and bool(current)
+    agent = _agent_slug(body.get("agent"))
+    if agent:
+        # Growing an existing agent's Soul Script (agent view). ``original`` is the
+        # script as it stood when the user opened the wizard; ``current`` is the
+        # latest draft when expanding.
+        if target != "soul_script":
+            return JSONResponse({"error": "Only a Soul Script can be expanded"}, 400)
+        if not _can_access_agent(agent, uid) or not _load_profile(agent, user_id=uid):
+            return JSONResponse({"error": "Agent not found"}, 404)
+        original = str(body.get("original", "")).strip()[:30000] or _load_soul_script(agent, user_id=uid).strip()
+        cfg = _get_agent_config(agent, user_id=uid)
+        display = (cfg.get("display_name") or _agent_display_name(agent))[:60]
+        min_words = _soul_grow_target(original)
+        fields.update(display=display, min_words=min_words)
+        their_prompt = _load_system_prompt(agent, user_id=uid).strip()[:8000]
+        system = (f"{persona}\n\n{codex_soul}\n\n"
+                  + _CODEX_GROW_INTERVIEW.format(display=display, words=_word_count(original))
+                  + f"\n\n{display}'s system prompt:\n---\n{their_prompt or '(none)'}\n---"
+                  + f"\n\n{display}'s current Soul Script:\n---\n{original or '(empty)'}\n---")
+        spec = {**spec, "write": _CODEX_GROW_WRITE}
+    elif current and not expand:
         system += f"\n\nThe user's current draft of {spec['name']}:\n---\n{current}\n---"
     messages = [{"role": "system", "content": system}]
     transcript = body.get("transcript")
@@ -6216,8 +6308,11 @@ async def api_profile_codex_draft(request: Request):
         if text:
             messages.append({"role": "assistant" if turn.get("role") == "codex" else "user",
                              "content": text})
-    finish = bool(body.get("finish"))
-    if finish:
+    finish = bool(body.get("finish")) or expand
+    if expand:
+        messages.append({"role": "user", "content": _CODEX_EXPAND.format(
+            **fields, words=_word_count(current), current=current)})
+    elif finish:
         messages.append({"role": "user", "content": spec["write"].format(**fields)})
     elif messages[-1]["role"] != "user":
         messages.append({"role": "user",
@@ -6226,13 +6321,19 @@ async def api_profile_codex_draft(request: Request):
     model = (_get_agent_config(codex, user_id=uid).get("model") or profile.get("model", "")
              or (conn["models"][0] if conn.get("models") else "gpt-4o-mini"))
     text, err = await _billed_completion(request, conn, model, messages, codex,
-                                         f"{target}_draft", temperature=0.8 if finish else 0.7)
+                                         f"{target}_draft", temperature=0.8 if finish else 0.7,
+                                         timeout=300 if finish else 120)  # a full Soul Script takes a while
     if err:
         return err
     if not text:
         return JSONResponse({"error": "Codex Animus returned nothing. Try again."}, 502)
     if finish:
-        return {target: re.sub(r"^```(?:markdown|md|text)?\s*|\s*```$", "", text).strip()}
+        text = re.sub(r"^```(?:markdown|md|text)?\s*|\s*```$", "", text).strip()
+        # An expansion never hands back less than it was given.
+        if expand and _word_count(text) < _word_count(current):
+            text = current
+        words = _word_count(text)
+        return {target: text, "words": words, "min_words": min_words, "short": words < min_words}
     return {"question": text}
 
 @app.put("/api/profiles/{name}/knowledge")

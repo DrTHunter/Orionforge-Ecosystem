@@ -89,7 +89,9 @@ base_url: https://api.deepseek.com/v1
 
 ## Adding a New Agent
 
-The easy way: **Profiles → + New Agent**. The wizard walks four steps: a name, model and one-line personality; optional values and boundaries; the system prompt; and the Soul Script. Steps 3 and 4 start from versions generated out of steps 1–2, and you can edit each one, or click **Draft with Codex Animus** on either step to be interviewed and have Codex write it. Creating writes `profiles/<name>.yaml`, `prompts/<name>.system.md` and `directives/<name>.md`.
+The easy way: **Profiles → + New Agent**. The wizard walks four steps: a name, model and one-line personality; optional values and boundaries; the system prompt; and the Soul Script. Steps 3 and 4 start from versions generated out of steps 1–2, and you can edit each one, or click **Draft with Codex Animus** on either step to be interviewed and have Codex write it. Both have to be at least as long as Elysia's: 475 words for the prompt and 2,175 for the Soul Script (`WIZARD_MIN_WORDS` in `web/app.py`). A word meter under each editor shows how far along it is, and the wizard won't move on until each one reaches it. Codex writes to that length, and if a draft comes back short the wizard asks it to expand. Creating writes `profiles/<name>.yaml`, `prompts/<name>.system.md` and `directives/<name>.md`.
+
+To grow an agent you already have, open it on the Profiles page and click **Expand with Codex Animus** under its Soul Script. Codex reads the agent's prompt and Soul Script, interviews you about what to deepen, then rewrites it in full: everything kept, at least a fifth longer (and never under 2,175 words). You review the result with an old → new word count, and nothing is saved until you click **Save & apply**.
 
 By hand:
 

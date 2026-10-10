@@ -5287,9 +5287,11 @@ def test_profile_create_v2():
                     # Draft with Codex Animus: interview turns, then each target
                     seen = []
 
-                    async def _fake_completion(request, conn, model, messages, agent, label, temperature=0.7):
+                    async def _fake_completion(request, conn, model, messages, agent, label, temperature=0.7, **kw):
                         seen.append(messages)
                         last = messages[-1]["content"]
+                        if "Rewrite it in full and longer" in last:
+                            return "word " * 2500, None
                         if "write the Soul Script" in last:
                             return "```markdown\n# Soul Script: Iron Sage\n\n### Origin\nForged.\n```", None
                         if "write the system prompt" in last:
@@ -5324,6 +5326,76 @@ def test_profile_create_v2():
                               ds.json().get("soul_script") == "# Soul Script: Iron Sage\n\n### Origin\nForged.")
                         bad = await client.post("/api/profiles/codex-draft", json={**base, "target": "x"})
                         check("codex unknown target → 400", bad.status_code == 400)
+
+                        # Elysia's length is the minimum: short drafts say so, and expand
+                        mins = _app._wizard_min_words()
+                        check("min words are Elysia's length", mins == {"system_prompt": 475, "soul_script": 2175})
+                        check("prompt instruction asks for Elysia's length",
+                              "at least 475 words" in seen[-2][-1]["content"])
+                        dsj = ds.json()
+                        check("short draft flagged", dsj.get("short") is True and dsj.get("min_words") == 2175
+                              and dsj.get("words") == 8)
+                        ex = await client.post("/api/profiles/codex-draft", json={
+                            **base, "target": "soul_script", "expand": True, "current": "# Soul Script\nshort"})
+                        exj = ex.json()
+                        check("expand sends the draft and the gap",
+                              "It is 4 words" in seen[-1][-1]["content"] and "at least 2175" in seen[-1][-1]["content"])
+                        check("expanded draft meets the minimum",
+                              exj.get("words") == 2500 and exj.get("short") is False)
+
+                        async def _shrinking(*a, **kw):
+                            return "tiny", None
+                        _app._billed_completion = _shrinking
+                        sh = await client.post("/api/profiles/codex-draft", json={
+                            **base, "target": "soul_script", "expand": True, "current": "one two three four"})
+                        check("expansion never shrinks the draft", sh.json().get("soul_script") == "one two three four")
+                        _app._billed_completion = _fake_completion
+
+                        # Expanding an existing agent's Soul Script (agent view)
+                        grow = {"target": "soul_script", "agent": "iron_sage"}
+                        g1 = await client.post("/api/profiles/codex-draft", json=grow)
+                        sysmsg = seen[-1][0]["content"]
+                        check("grow: interviews about the existing agent", g1.status_code == 200
+                              and "expand the existing Soul Script of Iron Sage" in sysmsg)
+                        check("grow: Codex reads the saved Soul Script and prompt",
+                              "- Honesty over comfort" in sysmsg and "You are Iron Sage." in sysmsg)
+                        long_soul = "# Soul Script: Iron Sage\n\n### Origin\n" + "deep " * 3000
+                        g2 = await client.post("/api/profiles/codex-draft", json={
+                            **grow, "finish": True, "original": long_soul,
+                            "transcript": [{"role": "codex", "text": "What's thin?"},
+                                           {"role": "user", "text": "The monastery years"}]})
+                        g2j = g2.json()
+                        check("grow: writes with the expand-don't-replace brief",
+                              "expand, don't replace" in seen[-1][-1]["content"])
+                        check("grow: target is a fifth longer than the original",
+                              g2j.get("min_words") == round(len(long_soul.split()) * 1.2) and g2j.get("short") is True)
+                        g3 = await client.post("/api/profiles/codex-draft", json={**grow, "finish": True})
+                        check("grow: short scripts still aim for the wizard minimum", g3.json().get("min_words") == 2175)
+                        bad1 = await client.post("/api/profiles/codex-draft", json={**grow, "target": "system_prompt"})
+                        check("grow: only Soul Scripts", bad1.status_code == 400)
+                        bad2 = await client.post("/api/profiles/codex-draft", json={**grow, "agent": "nobody_here"})
+                        check("grow: unknown agent → 404", bad2.status_code == 404)
+
+                        # Everyone has a short description: own, profile's, or the prompt's first sentence
+                        sd = _app._short_description
+                        check("short desc: settings first", sd("edited", {"description": "Mine"}, {"description": "P"}) == "Mine")
+                        check("short desc: then the profile", sd("edited", {}, {"description": "From profile"}) == "From profile")
+                        check("short desc: then the prompt's first sentence", sd("edited", {}, {}) == "You are Edited.")
+                        (tmp_prompts / "wordy.system.md").write_text("You are " + "very " * 40 + "wordy. More.", encoding="utf-8")
+                        long_one = sd("wordy", {}, {})
+                        check("short desc: long sentences are cut to 100", len(long_one) <= 100 and long_one.endswith("…"))
+                        check("short desc: no prompt, no description", sd("nobody_at_all", {}, {}) == "")
+                        import yaml as _yaml_sd
+                        for _pf in sorted((Path(__file__).resolve().parent.parent / "profiles").glob("*.yaml")):
+                            _d = (_yaml_sd.safe_load(_pf.read_text(encoding="utf-8")) or {}).get("description") or ""
+                            check(f"built-in {_pf.stem} has a short description", 0 < len(_d) <= 100, f"{len(_d)} chars")
+
+                        pv2 = await client.post("/api/profiles/wizard-preview", json={"name": "x"})
+                        check("preview carries the minimums", pv2.json().get("min_words") == mins)
+                        (tmp_prompts / "elysia.system.md").write_text("w " * 600, encoding="utf-8")
+                        check("minimum is a fixed number, not read from Elysia",
+                              _app._wizard_min_words()["system_prompt"] == 475)
+                        (tmp_prompts / "elysia.system.md").unlink()
                     finally:
                         _app._billed_completion = _orig_bc
                         _app._resolve_connection = _orig_rc
