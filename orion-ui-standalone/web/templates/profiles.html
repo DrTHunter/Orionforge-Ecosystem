@@ -933,7 +933,7 @@
            style="background: {{ user_color }};"
            onclick="toggleUserAvatarMenu(event)">
         {% if up.get('image') %}
-        <img src="{{ up.image }}" alt="You">
+        <img src="{{ up.image|thumb(256) }}" alt="You" decoding="async">
         {% else %}
         {{ (up.get('name', 'You'))[0] | upper }}
         {% endif %}
@@ -997,7 +997,7 @@
         <div class="agent-card-header"
              style="background: linear-gradient(135deg, {{ agent_color }}33, {{ agent_color }}0d);">
           {% if av.get('image') %}
-          <img class="agent-photo" src="{{ av.image }}" alt="{{ name }}"
+          <img class="agent-photo" src="{{ av.image|thumb(512) }}" alt="{{ name }}" loading="lazy" decoding="async"
                style="{{ 'object-position: %s%% %s%%; transform: scale(%s); transform-origin: %s%% %s%%;'|format(av.get('photo_x', 50), av.get('photo_y', 0), av.get('photo_zoom', 1), av.get('photo_x', 50), av.get('photo_y', 0)) if av.get('photo_zoom') else '' }}">
           {% else %}
           <i class="fas fa-user-astronaut agent-icon" style="color: {{ agent_color }};"></i>
@@ -1067,7 +1067,7 @@
              style="background: {{ agent_color }};"
              onclick="toggleAvatarMenu('{{ name }}', event)">
           {% if av.get('image') %}
-          <img src="{{ av.image }}" alt="{{ name }}">
+          <img src="{{ av.image|thumb(256) }}" alt="{{ name }}" loading="lazy" decoding="async">
           {% else %}
           {{ name[0] | upper }}
           {% endif %}
@@ -1228,7 +1228,7 @@
                     onchange="saveField('{{ name }}', 'system_prompt_text', this.value)"
           >{{ ad.system_prompt }}</textarea>
           <button class="btn btn-secondary wizard-codex-btn" style="margin-top:0.5rem;" onclick="openSoulGrow('{{ name }}', 'system_prompt')">
-            <img src="/uploads/avatar_codex_animus_forge2026.jpg" alt="" onerror="this.remove()">
+            <img src="/api/uploads/avatar_codex_animus_forge2026.jpg?w=64" alt="" loading="lazy" decoding="async" onerror="this.remove()">
             Expand with Codex Animus
           </button>
           <div class="field-hint">The foundational instruction set that defines behavior, personality, and role. Codex Animus can interview you and expand it: it keeps what's there and goes deeper.</div>
@@ -1248,7 +1248,7 @@
                     onchange="saveField('{{ name }}', 'soul_script_text', this.value)"
           >{{ ad.soul_script }}</textarea>
           <button class="btn btn-secondary wizard-codex-btn" style="margin-top:0.5rem;" onclick="openSoulGrow('{{ name }}')">
-            <img src="/uploads/avatar_codex_animus_forge2026.jpg" alt="" onerror="this.remove()">
+            <img src="/api/uploads/avatar_codex_animus_forge2026.jpg?w=64" alt="" loading="lazy" decoding="async" onerror="this.remove()">
             Expand with Codex Animus
           </button>
           <div class="field-hint">
@@ -1479,7 +1479,7 @@
       <div id="wizard-codex" style="display:none; margin-top:0.75rem;">
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <button class="btn btn-secondary wizard-codex-btn" id="wizard-codex-start" onclick="startCodexDraft()">
-            <img src="/uploads/avatar_codex_animus_forge2026.jpg" alt="" onerror="this.remove()">
+            <img src="/api/uploads/avatar_codex_animus_forge2026.jpg?w=64" alt="" loading="lazy" decoding="async" onerror="this.remove()">
             <span id="wizard-codex-label">Draft with Codex Animus</span>
           </button>
           <a href="#" class="field-hint" id="wizard-reset" onclick="event.preventDefault(); resetWizardEditor();">Reset to the generated version</a>

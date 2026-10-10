@@ -10919,7 +10919,8 @@ def test_chat_avatar_and_analytics_template():
     check("_agentAvatarHtml defined", "function _agentAvatarHtml(agentName, av)" in html)
     check("_avatarFallback defined", "function _avatarFallback(img)" in html)
     check("img has onerror fallback", 'onerror="_avatarFallback(this)"' in html)
-    check("image src escaped", "src=\"${esc(av.image)}\"" in html)
+    check("image src escaped", "src=\"${esc(thumbUrl(av.image, 128))}\"" in html)
+    check("avatar asks for a thumbnail", "thumbUrl(av.image, 128)" in html)
     check("no raw unescaped avatar <img> left",
           not re.search(r'<img src="\$\{(av|_tav)\.image\}"', html))
     check("all 3 render paths use helper", html.count("_agentAvatarHtml(agent") >= 3)
@@ -10946,7 +10947,12 @@ def test_chat_avatar_and_analytics_template():
         m = re.search(r"^function " + re.escape(name) + r"\(.*?^\}", html, re.S | re.M)
         return m.group(0) if m else ""
 
+    # thumbUrl() lives in base.html, which every page includes
+    base = open(os.path.join(os.path.dirname(tpl), "base.html"), encoding="utf-8").read()
+    m_thumb = re.search(r"^ *function thumbUrl\(.*?^ *\}$", base, re.S | re.M)
+    check("base.html defines thumbUrl", bool(m_thumb))
     js = "\n".join([
+        m_thumb.group(0) if m_thumb else "function thumbUrl(u) { return u; }",
         "const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;');",
         "const _agentAvatarColor = () => '#abcdef';",
         "const events = []; globalThis.gtag = (t, n, p) => events.push([n, p]);",
@@ -10957,6 +10963,7 @@ def test_chat_avatar_and_analytics_template():
         "r.noImg = _agentAvatarHtml('nova', {});",
         "r.undef = _agentAvatarHtml('nova');",
         "r.def = _agentAvatarHtml('nova', {image: '/api/uploads/a.png'});",
+        "r.thumbs = [thumbUrl('/uploads/a.png', 128), thumbUrl('/api/uploads/b.jpg?x=1', 64), thumbUrl('/uploads/c.gif', 64), thumbUrl('https://e/x.png', 64), thumbUrl('', 64)];",
         "r.crop = _agentAvatarHtml('nova', {image: '/a.png', photo_x: 20, photo_y: 80, photo_zoom: '1.5', color: '#111'});",
         "r.zero = _agentAvatarHtml('nova', {image: '/a.png', photo_x: 0, photo_y: 0});",
         "r.xss = _agentAvatarHtml('nova', {image: '\" onload=\"alert(1)'});",
@@ -10979,6 +10986,9 @@ def test_chat_avatar_and_analytics_template():
     check("undefined av → initial bubble", ">N</div>" in r["undef"])
     check("no image uses fallback color", "background:#abcdef" in r["noImg"])
     check("default crop 50% 50%", "object-position:50% 50%" in r["def"])
+    check("avatar img uses the thumbnail", 'src="/api/uploads/a.png?w=128"' in r["def"])
+    check("thumbUrl mirrors the server filter",
+          r["thumbs"] == ["/api/uploads/a.png?w=128", "/api/uploads/b.jpg?w=64", "/uploads/c.gif", "https://e/x.png", ""])
     check("zoom 1 → no transform", "transform" not in r["def"])
     check("custom crop position", "object-position:20% 80%" in r["crop"])
     check("zoom applied", "transform:scale(1.5)" in r["crop"])
@@ -11758,7 +11768,14 @@ def test_agi_loop_preamble_and_linux():
 
     web = Path(__file__).resolve().parent.parent / "web" / "templates"
     base = (web / "base.html").read_text(encoding="utf-8")
-    check("nav has a K-OS Loop link", 'href="/agi-loop?loop=k_os" id="nav-agi-loop-kos-link"' in base and ">K-OS Loop</span>" in base)
+    check("nav has one AGI Loop entry for every loop",
+          base.count('id="nav-agi-loop-link"') == 1 and "nav-agi-loop-kos-link" not in base
+          and "Loop</span>" in base and base.count("Loop</span>") == 1)
+    check("…highlighted on any loop's page", "(page or '').startswith('agi-loop')" in base)
+    check("…reopens the last loop", "_lastLoopHref(" in base and "agiLoopLast" in base)
+    loop_page_nav = (Path(__file__).resolve().parent.parent / "web" / "templates" / "agi_loop.html").read_text(encoding="utf-8")
+    check("loop page switches loops with its chips", "{% for l in loops %}<a class=\"al-chip\" href=\"/agi-loop?loop={{ l }}\"" in loop_page_nav)
+    check("loop page remembers the loop", "localStorage.setItem('agiLoopLast', LOOP_ID)" in loop_page_nav)
     check("nav has no links to removed loops", "loop=madara" not in base and "loop=orion" not in base)
     loop_page = (web / "agi_loop.html").read_text(encoding="utf-8")
     check("loop page shows each mind's own home", "/home/{{ linux_user }}" in loop_page)
@@ -12553,6 +12570,75 @@ def test_loop_pages_stay_light():
 # MADARA — the prompt / soul-script split moved his words, never changed them
 
 # =============================================
+
+# ═════════════════════════════════════════════
+# UPLOAD THUMBNAILS — sized WebP, caching, path guard
+# ═════════════════════════════════════════════
+def test_upload_thumbnails():
+    print("\n=== TORTURE: Upload thumbnails ===")
+    tmp = tempfile.mkdtemp()
+    try:
+        import web.app as _app
+        from PIL import Image
+        orig = (_app._UPLOADS_DIR, _app._THUMB_DIR)
+        uploads = Path(tmp) / "uploads"
+        uploads.mkdir()
+        _app._UPLOADS_DIR = uploads
+        _app._THUMB_DIR = Path(tmp) / "thumbs"
+        try:
+            Image.new("RGB", (1600, 1200), (120, 40, 200)).save(uploads / "avatar_big.png")
+            Image.new("RGBA", (1600, 1600), (0, 0, 0, 0)).save(uploads / "avatar_alpha.png")
+            Image.new("RGB", (100, 100)).save(uploads / "avatar_small.png")
+            (uploads / "anim.gif").write_bytes(b"GIF89a")
+
+            t = _app._thumb_file(uploads / "avatar_big.png", 300)
+            check("thumb is WebP", t is not None and t.suffix == ".webp")
+            with Image.open(t) as im:
+                check("thumb snaps up to the 512 size", im.size == (512, 384), str(im.size))
+            check("thumb is much smaller", t.stat().st_size < (uploads / "avatar_big.png").stat().st_size / 5)
+            check("thumb is reused", _app._thumb_file(uploads / "avatar_big.png", 512) == t)
+            ta = _app._thumb_file(uploads / "avatar_alpha.png", 128)
+            with Image.open(ta) as im:
+                check("transparency is kept", "A" in im.getbands())
+            check("small images aren't upscaled", _app._thumb_file(uploads / "avatar_small.png", 256) is None)
+            check("GIFs are left alone", _app._thumb_file(uploads / "anim.gif", 128) is None)
+            check("no temp files left", not list(_app._THUMB_DIR.glob("*.part")))
+
+            f = _app._thumb_url
+            check("filter: shared upload", f("/uploads/avatar_big.png", 256) == "/api/uploads/avatar_big.png?w=256")
+            check("filter: user upload", f("/api/uploads/x.jpg?v=1", 128) == "/api/uploads/x.jpg?w=128")
+            check("filter: gif untouched", f("/uploads/a.gif", 128) == "/uploads/a.gif")
+            check("filter: other urls untouched", f("https://x/y.png", 128) == "https://x/y.png" and f("", 64) == "")
+
+            from httpx import ASGITransport, AsyncClient
+            import asyncio
+
+            async def _run():
+                async with AsyncClient(transport=ASGITransport(app=_app.app), base_url="http://test") as client:
+                    r = await client.get("/api/uploads/avatar_big.png?w=256")
+                    check("route: thumbnail served", r.status_code == 200 and r.headers.get("content-type") == "image/webp")
+                    check("route: cached for a week", "max-age=604800" in r.headers.get("cache-control", ""))
+                    r2 = await client.get("/api/uploads/avatar_big.png")
+                    check("route: original without ?w", r2.status_code == 200
+                          and r2.headers.get("content-type") == "image/png" and "max-age" in r2.headers.get("cache-control", ""))
+                    r3 = await client.get("/api/uploads/..%2F..%2Fsecret.txt")
+                    check("route: can't climb out of uploads", r3.status_code == 404)
+                    (Path(tmp) / "secret.txt").write_text("no", encoding="utf-8")
+                    r4 = await client.get("/api/uploads/../secret.txt")
+                    check("route: dot-dot path refused", r4.status_code == 404)
+
+            _orig_gac = _app.get_auth_config
+            _app.get_auth_config = lambda: {"auth_enabled": False}
+            try:
+                asyncio.run(_run())
+            finally:
+                _app.get_auth_config = _orig_gac
+        finally:
+            _app._UPLOADS_DIR, _app._THUMB_DIR = orig
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_boundary_policy()
     test_pii_guard_extended()
@@ -12613,6 +12699,7 @@ if __name__ == "__main__":
     test_extract_save_memories_extended()
     test_registry_get_tool_defs()
     test_profile_create_v2()
+    test_upload_thumbnails()
     test_settings_helpers()
     test_vault_search_min_score()
     test_tag_sort_mode()

@@ -33,6 +33,7 @@ orion-ui-standalone/data/chats/*
 orion-ui-standalone/data/memory/*
 !orion-ui-standalone/data/memory/seed_vault.jsonl
 orion-ui-standalone/data/shared/
+orion-ui-standalone/data/thumbs/
 orion-ui-standalone/data/trash/
 # data/uploads: ignore user-uploaded runtime files, but KEEP the shipped default
 # agent avatars + chat background so a fresh deploy has them out of the box.

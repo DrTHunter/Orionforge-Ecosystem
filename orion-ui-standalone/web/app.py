@@ -14,6 +14,7 @@ Prompt Injection Order
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import logging
 import os
@@ -284,6 +285,7 @@ async def _lifespan_body():
     # after the soul-script index is ready, so nobody wakes into a first tick without their identity.
     asyncio.create_task(_autostart_loops(faiss_ready))
     asyncio.create_task(_watch_loops())
+    asyncio.create_task(_warm_thumbs())
     # Auto-purge inactive accounts (>90 days)
     try:
         result = purge_inactive_users()
@@ -587,22 +589,106 @@ app.mount("/uploads", StaticFiles(directory=str(_UPLOADS_DIR)), name="uploads")
 
 
 # ── Per-user upload serving ──────────────────────────────────────
+# ── Image thumbnails ──────────────────────────────────────────────
+# Avatars are uploaded as multi-megabyte PNGs but shown at 32-300 px. Pages ask
+# for /api/uploads/<file>?w=<px> (see the ``thumb`` template filter and
+# thumbUrl() in base.html) and get a WebP sized for the slot, made once and
+# kept in data/thumbs/. Upload names carry a random suffix, so a changed
+# picture is a new URL and a week of browser caching is safe.
+_THUMB_WIDTHS = (64, 128, 256, 512, 1024)
+_THUMB_DIR = _DATA_DIR / "thumbs"
+_UPLOAD_CACHE = "private, max-age=604800"
+
+
+def _thumb_file(src: Path, width: int) -> Path | None:
+    """A cached WebP of ``src`` at most ``width`` px wide, or None to serve the original
+    (already small enough, animated, or not an image Pillow can read)."""
+    width = next((w for w in _THUMB_WIDTHS if w >= width), _THUMB_WIDTHS[-1])
+    if src.suffix.lower() not in (".png", ".jpg", ".jpeg", ".webp"):
+        return None
+    st = src.stat()
+    key = hashlib.sha1(f"{src.resolve()}|{st.st_mtime_ns}|{st.st_size}|{width}".encode()).hexdigest()[:24]
+    dest = _THUMB_DIR / f"{key}.webp"
+    if dest.exists():
+        return dest
+    try:
+        from PIL import Image, ImageOps
+        with Image.open(src) as im:
+            if im.width <= width or getattr(im, "is_animated", False):
+                return None
+            im = ImageOps.exif_transpose(im)
+            im = im.convert("RGBA" if "A" in im.getbands() else "RGB")
+            im = im.resize((width, max(1, round(im.height * width / im.width))), Image.LANCZOS)
+            _THUMB_DIR.mkdir(parents=True, exist_ok=True)
+            # A private temp name, then an atomic rename: two requests for the same
+            # thumbnail can both build it without stepping on each other.
+            tmp = dest.with_name(f"{dest.stem}.{uuid.uuid4().hex[:8]}.part")
+            im.save(tmp, "WEBP", quality=82, method=4)
+            tmp.replace(dest)
+        return dest
+    except Exception as exc:
+        log.warning("[thumbs] %s at %spx failed: %s", src.name, width, exc)
+        return None
+
+
+def _thumb_url(url: str, width: int = 256) -> str:
+    """Template filter: point an uploaded image at its thumbnail."""
+    if not url:
+        return url
+    for prefix in ("/uploads/", "/api/uploads/"):
+        if url.startswith(prefix):
+            name = url[len(prefix):].split("?", 1)[0]
+            if name.lower().endswith(".gif"):
+                return url
+            return f"/api/uploads/{name}?w={int(width)}"
+    return url
+
+
+templates.env.filters["thumb"] = _thumb_url
+
+
+async def _warm_thumbs():
+    """Build the avatar sizes pages ask for in the background, so the first visitor
+    after a deploy doesn't wait on them. Starts after boot and the health checks."""
+    await asyncio.sleep(20)
+
+    def work():
+        for path in sorted(_UPLOADS_DIR.glob("avatar_*")):
+            for width in (64, 128, 256, 512):
+                _thumb_file(path, width)
+    try:
+        await asyncio.to_thread(work)
+    except Exception as exc:
+        log.warning("[thumbs] warm-up stopped: %s", exc)
+
+
+def _inside(base: Path, name: str) -> Path | None:
+    """``base/name``, or None when ``name`` climbs out of ``base``."""
+    try:
+        path = (base / name).resolve()
+        return path if path.is_relative_to(base.resolve()) else None
+    except (OSError, ValueError):
+        return None
+
+
 @app.get("/api/uploads/{filename:path}")
-async def api_user_upload(filename: str, request: Request):
-    """Serve a file from the authenticated user's uploads directory."""
+async def api_user_upload(filename: str, request: Request, w: int = Query(0, ge=0, le=4096)):
+    """Serve a file from the authenticated user's uploads directory (``?w=`` for a thumbnail)."""
+    from starlette.responses import FileResponse
     uid = _get_user_id(request)
+    path = None
     if uid and uid != "__local__":
-        path = user_uploads_dir(uid) / filename
-    else:
-        path = _UPLOADS_DIR / filename
-    if not path.exists() or not path.is_file():
+        path = _inside(user_uploads_dir(uid), filename)
+    if path is None or not path.is_file():
         # Fallback to global uploads
-        path = _UPLOADS_DIR / filename
-    if not path.exists() or not path.is_file():
+        path = _inside(_UPLOADS_DIR, filename)
+    if path is None or not path.is_file():
         return JSONResponse({"error": "Not found"}, 404)
-    import mimetypes
-    media_type = mimetypes.guess_type(str(path))[0] or "application/octet-stream"
-    return Response(content=path.read_bytes(), media_type=media_type)
+    if w:
+        thumb = await asyncio.to_thread(_thumb_file, path, w)
+        if thumb is not None:
+            return FileResponse(thumb, media_type="image/webp", headers={"Cache-Control": _UPLOAD_CACHE})
+    return FileResponse(path, headers={"Cache-Control": _UPLOAD_CACHE})
 
 
 def _user_avatar_map(avatar_map: dict, uid: str | None) -> dict:

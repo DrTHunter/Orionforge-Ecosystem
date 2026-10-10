@@ -219,6 +219,20 @@
   .wz-review dt { color: var(--dim); font-weight: 700; } .wz-review dd { margin: 0; word-break: break-word; }
   .wz-card:disabled { opacity: .45; cursor: not-allowed; border-color: var(--bd); }
   .wz-card.danger.on { border-color: var(--bad); background: rgba(239,68,68,.1); }
+  /* loops tab */
+  .lp-tools { display: flex; gap: .4rem; }
+  .lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: .7rem; }
+  .lp-card { display: flex; flex-direction: column; gap: .3rem; padding: .85rem 1rem; border: 1px solid var(--bd); border-radius: .7rem; background: rgba(255,255,255,.02); cursor: pointer; color: var(--tx); transition: border-color .15s, transform .15s; min-width: 0; }
+  .lp-card:hover { border-color: var(--acc2); transform: translateY(-1px); }
+  .lp-card.on { border-color: var(--acc); background: rgba(99,102,241,.08); }
+  .lp-top { display: flex; justify-content: space-between; align-items: center; gap: .5rem; }
+  .lp-top b { font-size: .92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lp-meta { font-size: .72rem; color: var(--mu); }
+  .lp-state { font-size: .62rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; padding: .12rem .5rem; border-radius: 999px; border: 1px solid var(--bd); color: var(--dim); flex-shrink: 0; }
+  .lp-state.run { color: #6ee7b7; border-color: rgba(16,185,129,.4); }
+  .lp-actions { display: flex; justify-content: space-between; align-items: center; margin-top: .3rem; font-size: .7rem; color: var(--dim); }
+  .lp-arow { display: flex; justify-content: space-between; align-items: center; gap: .75rem; padding: .55rem 0; border-bottom: 1px solid var(--bd); font-size: .8rem; }
+  .lp-arow:last-child { border-bottom: none; }
   .wz-check { display: flex; align-items: center; gap: .5rem; font-size: .82rem; margin: .4rem 0; cursor: pointer; }
 
   /* inbox (shared inbox tool) */
@@ -245,9 +259,6 @@
     </div>
     <div class="al-row">
       {% for l in loops %}<a class="al-chip" href="/agi-loop?loop={{ l }}" style="text-decoration:none;{% if l == loop %}border-color:var(--acc);color:var(--acc);font-weight:700;{% endif %}">{{ l }}</a>{% endfor %}
-      <button class="al-chip" style="cursor:pointer;color:var(--acc2);border-color:rgba(99,102,241,.4)" onclick="openWizard()" title="Create a new loop">&#xFF0B; New loop</button>
-      <button class="al-chip" style="cursor:pointer;color:#fca5a5;border-color:rgba(239,68,68,.35)" onclick="openDeleteWizard()" title="Archive or delete a loop">&#128465; Delete loop</button>
-      <button class="al-chip" style="cursor:pointer;color:#6ee7b7;border-color:rgba(16,185,129,.35)" onclick="openRestoreWizard()" title="Bring back an archived loop">&#8634; Restore loop</button>
       <span class="al-chip" id="hdr-agent">{{ config.agent }}</span>
       <span class="al-chip" id="hdr-model">model: {{ config.model or 'profile default' }}</span>
       <span class="al-pill ph-idle" id="hdr-phase"><span class="al-dot"></span><span id="hdr-phase-text">idle</span></span>
@@ -276,6 +287,7 @@
     <button class="al-tab" data-tab="journal">Journal</button>
     <button class="al-tab" data-tab="ticks">Ticks</button>
     <button class="al-tab" data-tab="config">Configuration</button>
+    <button class="al-tab" data-tab="loops">&#8734; Loops</button>
   </div>
   <select class="al-tabselect" id="al-tabselect" aria-label="Section">
     <option value="overview">Overview</option><option value="world">Field</option>
@@ -283,6 +295,7 @@
     <option value="workbench">Workbench</option><option value="linux">Linux</option><option value="inbox">Inbox</option>
     <option value="journal">Journal</option><option value="ticks">Ticks</option>
     <option value="config">Configuration</option>
+    <option value="loops">Loops</option>
   </select>
 
   <!-- ══ Overview ══════════════════════════════════════════════ -->
@@ -536,6 +549,22 @@
     </div>
   </section>
 
+  <!-- ══ Loops: create, delete and restore ════════════════════ -->
+  <section class="al-panel" id="panel-loops">
+    <div class="al-card">
+      <h3>Loops <span class="lp-tools">
+        <button class="al-btn al-btn-sm b-acc" onclick="openWizard()">&#xFF0B; New loop</button>
+        <button class="al-btn al-btn-sm" onclick="openRestoreWizard()">&#8634; Restore loop</button>
+      </span></h3>
+      <p class="hint" style="margin-top:0">Each loop is its own agent with its own config, energy, journal and Linux machine. Open one by clicking it. Built-in loops can be stopped but not deleted.</p>
+      <div class="lp-grid" id="lp-grid"><div class="al-empty">Loading…</div></div>
+    </div>
+    <div class="al-card" style="margin-top:1rem">
+      <h3>Archive <span class="al-small al-dim">loops deleted with “Archive it”</span></h3>
+      <div id="lp-archive"><div class="al-empty">Loading…</div></div>
+    </div>
+  </section>
+
   <!-- ══ Configuration ═════════════════════════════════════════ -->
   <section class="al-panel" id="panel-config">
     <div class="al-card">
@@ -720,6 +749,7 @@ function toast(msg, type) {
   clearTimeout(t._h); t._h = setTimeout(() => t.className = 'al-toast', 2600);
 }
 const LOOP_ID = {{ loop|tojson }};
+try { localStorage.setItem('agiLoopLast', LOOP_ID); } catch (e) {}  // the sidebar's AGI Loop entry reopens it
 async function api(path, opts) {
   path += (path.includes('?') ? '&' : '?') + 'loop=' + encodeURIComponent(LOOP_ID);
   const r = await fetch(path, opts);
@@ -755,6 +785,7 @@ function refreshTab(force) {
   else if (t === 'inbox' && force) { inboxRefresh(); loadToolRequests(); }
   else if (t === 'journal' && force) loadJournal();
   else if (t === 'ticks' && force) loadTicks();
+  else if (t === 'loops' && force) loadLoopsTab();
 }
 
 /* ── Tool requests ───────────────────────────────── */
@@ -1444,7 +1475,7 @@ if (new URLSearchParams(location.search).has('new')) setTimeout(openWizard, 0);
 const DZ_BUILT_IN = {{ built_in_loops|tojson }};
 const DZ = {step: 0, id: '', info: null, mode: 'archive'};
 function dzSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B'; }
-function openDeleteWizard() {
+function openDeleteWizard(preset) {
   const custom = WZ_LOOPS.filter(l => !DZ_BUILT_IN.includes(l));
   $('dz-loops').innerHTML = WZ_LOOPS.map(l => {
     const built = DZ_BUILT_IN.includes(l);
@@ -1452,7 +1483,7 @@ function openDeleteWizard() {
       + `<b>${esc(l)}</b><span>${built ? 'Built in — can\'t be deleted' : (l === LOOP_ID ? 'The loop you\'re on' : 'Made with the wizard')}</span></button>`;
   }).join('');
   DZ.step = 0; DZ.info = null; DZ.mode = 'archive';
-  DZ.id = custom.includes(LOOP_ID) ? LOOP_ID : '';
+  DZ.id = custom.includes(preset) ? preset : custom.includes(LOOP_ID) ? LOOP_ID : '';
   $('dz-confirm').value = '';
   dzShow();
   if (!custom.length) $('dz-err').textContent = 'There are no wizard-made loops to delete. Use “New loop” to make one.';
@@ -1526,7 +1557,7 @@ function rzFree(id) {
   while (RZ.loops.includes(name)) name = id.slice(0, 21) + '_' + n++;
   return name;
 }
-async function openRestoreWizard() {
+async function openRestoreWizard(preset) {
   RZ.step = 0; RZ.pick = null;
   $('rz-list').innerHTML = '<div class="al-empty">Loading…</div>';
   $('rz-start').checked = false;
@@ -1540,6 +1571,31 @@ async function openRestoreWizard() {
     `<button type="button" class="wz-card" data-i="${i}" onclick="rzPick(${i})"><b>${esc(a.id)}</b>`
     + `<span>${esc(a.agent || '?')} · archived ${esc(new Date(a.archived_at).toLocaleString())}<br>${a.files} files · ${esc(dzSize(a.bytes))}</span></button>`).join('')
     : '<div class="al-empty">Nothing in the archive. Loops land here when you delete them with “Archive it”.</div>';
+  const i = preset ? RZ.list.findIndex(a => a.name === preset) : -1;
+  if (i >= 0) rzPick(i);
+}
+
+/* ── Loops tab ──────────────────────────────────── */
+async function loadLoopsTab() {
+  const get = url => fetch(url).then(r => r.ok ? r.json() : {}).catch(() => ({}));
+  const loops = (await get('/api/agi-loop/loops')).loops || [];
+  const info = await Promise.all(loops.map(l => get('/api/agi-loop/loops/' + encodeURIComponent(l.id))));
+  $('lp-grid').innerHTML = loops.length ? loops.map((l, i) => {
+    const d = info[i] || {};
+    const id = esc(l.id);
+    return `<div class="lp-card${l.id === LOOP_ID ? ' on' : ''}" onclick="location.href='/agi-loop?loop=${encodeURIComponent(l.id)}'">`
+      + `<div class="lp-top"><b>${id}</b><span class="lp-state${d.running ? ' run' : ''}">${d.running ? 'running' : 'stopped'}</span></div>`
+      + `<div class="lp-meta">${esc(l.agent)}${d.files != null ? ' · ' + d.files + ' files · ' + esc(dzSize(d.bytes || 0)) : ''}</div>`
+      + `<div class="lp-actions"><span>${l.id === LOOP_ID ? 'You\'re here' : 'Open &rarr;'}</span>`
+      + (l.built_in ? '<span>Built in</span>'
+        : `<button class="al-btn al-btn-sm b-danger" onclick="event.stopPropagation(); openDeleteWizard('${id}')">Delete</button>`)
+      + '</div></div>';
+  }).join('') : '<div class="al-empty">No loops.</div>';
+  const archived = (await get('/api/agi-loop/archive')).archived || [];
+  $('lp-archive').innerHTML = archived.length ? archived.map(a =>
+    `<div class="lp-arow"><span><b>${esc(a.id)}</b> <span class="al-dim">· ${esc(a.agent || '?')} · archived ${esc(new Date(a.archived_at).toLocaleString())} · ${esc(dzSize(a.bytes))}</span></span>`
+    + `<button class="al-btn al-btn-sm" onclick="openRestoreWizard('${esc(a.name)}')">&#8634; Restore</button></div>`).join('')
+    : '<div class="al-empty">Nothing archived.</div>';
 }
 function closeRestoreWizard() { $('rz-modal').classList.remove('open'); }
 function rzPick(i) {

@@ -218,6 +218,7 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989 --reload
 |-------|-------------|
 | `GET /api/skin` | Get active skin |
 | `PUT /api/skin` | Set active skin |
+| `GET /api/uploads/{file}?w=<px>` | An uploaded image; with `w`, a WebP thumbnail at most that wide (64/128/256/512/1024, built once into `data/thumbs/`). Cached by the browser for a week; paths can't leave the uploads folder |
 | `GET /api/agi-loop/loops` | List loops with their agents and whether each is built in |
 | `POST /api/agi-loop/loops` | New loop wizard: register a loop (`id`, `config`, optional `start`) |
 | `GET /api/agi-loop/loops/{id}` | Delete loop wizard: agent, built in or not, running or not, data files and size |

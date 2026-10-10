@@ -143,6 +143,7 @@ Two loops are built in: **Supervisor** (`/agi-loop`) and **K-OS** (`/agi-loop?lo
 Three wizards on the loop page manage the rest:
 
 - **New loop**: pick an agent and a loop name, a connection and model, a rhythm (Calm, Balanced or Lively, or your own intervals and daily energy), review, create. The loop exists because its config file (`config/agi_loop_<id>.json`) does, so the sidebar, group chat, watchdog and restart pick it up.
+All three live in the loop page's **Loops** tab, which lists every loop with its state and size, plus the archive with a Restore button per entry.
 - **Delete loop**: pick a loop you made, see what it holds, then **Archive** it (moved to `data/orion/agi_loop_archive/<id>-<time>/`, nothing lost) or **Delete for good**, and type its name to confirm. A running loop is stopped first. Built-in loops can't be deleted.
 - **Restore loop**: bring an archived loop back with its config, journal, beliefs and workbench, under a new name if its old one has been taken. It comes back stopped unless you tick “wake it”.
 

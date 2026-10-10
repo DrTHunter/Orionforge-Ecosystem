@@ -1195,7 +1195,7 @@ function _agentAvatarHtml(agentName, av) {
   const x = av.photo_x ?? 50, y = av.photo_y ?? 50, z = parseFloat(av.photo_zoom) || 1;
   const crop = `object-position:${x}% ${y}%;` + (z !== 1 ? `transform:scale(${z});transform-origin:${x}% ${y}%;` : '');
   return `<div class="msg-avatar" data-fallback-color="${esc(color)}" data-initial="${initial}">`
-    + `<img src="${esc(av.image)}" alt="" style="${crop}" onerror="_avatarFallback(this)"></div>`;
+    + `<img src="${esc(thumbUrl(av.image, 128))}" alt="" style="${crop}" loading="lazy" decoding="async" onerror="_avatarFallback(this)"></div>`;
 }
 function _avatarFallback(img) {
   const box = img.parentElement;
@@ -2650,7 +2650,7 @@ function _renderEntry(role, text, data, timeStr, layers) {
       const uColor = _userProfile.color || '#10b981';
       const uInitial = uName.charAt(0).toUpperCase();
       const uAvatarHtml = _userProfile.image
-        ? `<div class="msg-avatar"><img src="${_userProfile.image}" alt="${uName}"></div>`
+        ? `<div class="msg-avatar"><img src="${thumbUrl(_userProfile.image, 128)}" alt="${uName}" loading="lazy" decoding="async"></div>`
         : `<div class="msg-avatar" style="background:${uColor};">${uInitial}</div>`;
       el.innerHTML = `<div class="msg-header">
         <span class="msg-time">${timeStr}</span>
