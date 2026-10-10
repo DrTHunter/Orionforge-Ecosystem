@@ -200,6 +200,27 @@
   .al-toast.show { transform: translateY(0); }
   .al-toast.ok { border-color: rgba(16,185,129,.5); } .al-toast.error { border-color: rgba(239,68,68,.5); }
 
+  /* new-loop wizard */
+  .wz-steps { display: flex; gap: .35rem; margin-bottom: 1rem; }
+  .wz-step { flex: 1; text-align: center; font-size: .66rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--dim); padding-bottom: .4rem; border-bottom: 2px solid var(--bd); }
+  .wz-step.on { color: var(--tx); border-bottom-color: var(--acc); }
+  .wz-step.done { color: var(--acc2); border-bottom-color: rgba(99,102,241,.45); }
+  .wz-page { display: none; } .wz-page.on { display: block; animation: al-fade .18s ease; }
+  .wz-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin-bottom: 1rem; }
+  @media (max-width: 640px) { .wz-cards { grid-template-columns: minmax(0, 1fr); } }
+  .wz-card { display: flex; flex-direction: column; justify-content: flex-start; text-align: left; background: rgba(255,255,255,.03); border: 1px solid var(--bd); border-radius: .6rem; padding: .7rem .8rem; color: var(--tx); cursor: pointer; font-family: inherit; }
+  .wz-card:hover { border-color: var(--acc2); }
+  .wz-card.on { border-color: var(--acc); background: rgba(99,102,241,.1); }
+  .wz-card b { display: block; font-size: .86rem; margin-bottom: .2rem; }
+  .wz-card span { font-size: .7rem; color: var(--mu); line-height: 1.4; }
+  .wz-err { color: #fca5a5; font-size: .76rem; min-height: 1.1rem; margin-top: .6rem; }
+  .wz-nav { display: flex; justify-content: space-between; gap: .5rem; margin-top: .75rem; }
+  .wz-review { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: .35rem 1rem; font-size: .82rem; margin: 0 0 1rem; }
+  .wz-review dt { color: var(--dim); font-weight: 700; } .wz-review dd { margin: 0; word-break: break-word; }
+  .wz-card:disabled { opacity: .45; cursor: not-allowed; border-color: var(--bd); }
+  .wz-card.danger.on { border-color: var(--bad); background: rgba(239,68,68,.1); }
+  .wz-check { display: flex; align-items: center; gap: .5rem; font-size: .82rem; margin: .4rem 0; cursor: pointer; }
+
   /* inbox (shared inbox tool) */
   .inbox-entry { display: flex; gap: .75rem; padding: .8rem 1rem; border-bottom: 1px solid rgba(255,255,255,.05); cursor: pointer; }
   .inbox-entry:hover { background: rgba(99,102,241,.05); }
@@ -224,6 +245,9 @@
     </div>
     <div class="al-row">
       {% for l in loops %}<a class="al-chip" href="/agi-loop?loop={{ l }}" style="text-decoration:none;{% if l == loop %}border-color:var(--acc);color:var(--acc);font-weight:700;{% endif %}">{{ l }}</a>{% endfor %}
+      <button class="al-chip" style="cursor:pointer;color:var(--acc2);border-color:rgba(99,102,241,.4)" onclick="openWizard()" title="Create a new loop">&#xFF0B; New loop</button>
+      <button class="al-chip" style="cursor:pointer;color:#fca5a5;border-color:rgba(239,68,68,.35)" onclick="openDeleteWizard()" title="Archive or delete a loop">&#128465; Delete loop</button>
+      <button class="al-chip" style="cursor:pointer;color:#6ee7b7;border-color:rgba(16,185,129,.35)" onclick="openRestoreWizard()" title="Bring back an archived loop">&#8634; Restore loop</button>
       <span class="al-chip" id="hdr-agent">{{ config.agent }}</span>
       <span class="al-chip" id="hdr-model">model: {{ config.model or 'profile default' }}</span>
       <span class="al-pill ph-idle" id="hdr-phase"><span class="al-dot"></span><span id="hdr-phase-text">idle</span></span>
@@ -424,7 +448,7 @@
     <div id="lx-pane-files" class="lx-files">
       <div class="al-card">
         <h3>Her home <button class="al-btn al-btn-sm" onclick="lxLoadTree()">&#8635;</button></h3>
-        <p class="hint">/home/{{ {'k_os': 'kos'}.get(loop, 'supervisor') }} · folders marked <span class="lx-node" style="display:inline;padding:0"><span class="rd">no README</span></span> haven't been explained yet.</p>
+        <p class="hint">/home/{{ linux_user }} · folders marked <span class="lx-node" style="display:inline;padding:0"><span class="rd">no README</span></span> haven't been explained yet.</p>
         <div class="lx-tree" id="lx-tree"><div class="al-empty">Loading…</div></div>
       </div>
       <div class="al-card">
@@ -557,8 +581,111 @@
   </section>
 </div>
 
-<div class="al-modal" id="al-modal" onclick="if(event.target===this)closeModal()">
+<div class="al al-modal" id="al-modal" onclick="if(event.target===this)closeModal()">
   <div class="al-modal-box"><h4><span id="al-modal-title"></span><button class="al-x" onclick="closeModal()">&times;</button></h4><div id="al-modal-body"></div></div>
+</div>
+<!-- ═══ NEW LOOP WIZARD ═══ -->
+<div class="al al-modal" id="wz-modal" onclick="if(event.target===this)closeWizard()">
+  <div class="al-modal-box" style="width:min(640px,100%)">
+    <h4><span>&infin; Create a new loop</span><button class="al-x" onclick="closeWizard()">&times;</button></h4>
+    <div class="wz-steps"><div class="wz-step">1 &middot; Who</div><div class="wz-step">2 &middot; Mind</div><div class="wz-step">3 &middot; Rhythm</div><div class="wz-step">4 &middot; Review</div></div>
+
+    <div class="wz-page">
+      <p class="hint" style="margin-top:0">A loop gives one agent a continuously running inner world. It runs on its own schedule, with its own energy, journal and workbench.</p>
+      <div class="al-form">
+        <div class="full"><label>Agent</label><select class="al-input" id="wz-agent" onchange="wzAgentChanged()">{% for a in agents %}<option value="{{ a }}">{{ a }}</option>{% endfor %}</select><div class="help">Whose mind runs in the loop. Its system prompt, soul script and memories come along.</div></div>
+        <div class="full"><label>Loop name</label><input class="al-input al-mono" id="wz-id" maxlength="24" placeholder="e.g. atlas" oninput="this.dataset.touched=1"><div class="help">Lowercase letters, digits and _ &mdash; becomes <span class="al-mono">?loop=&lt;name&gt;</span> and its data folder. Can't be changed later.</div></div>
+      </div>
+    </div>
+
+    <div class="wz-page">
+      <div class="al-form">
+        <div class="full"><label>Connection</label><select class="al-input" id="wz-conn" onchange="wzFillModels()"><option value="">Agent default</option>{% for c in connections %}<option value="{{ c.id }}">{{ c.name }} ({{ c.provider }})</option>{% endfor %}</select><div class="help">One connection and one model per loop &mdash; no router.</div></div>
+        <div><label>Model</label><input class="al-input" id="wz-model" list="wz-models" placeholder="profile default"><datalist id="wz-models"></datalist><div class="help">Blank uses the agent profile's model.</div></div>
+        <div><label>Temperature</label><input class="al-input" id="wz-temp" type="number" step="0.05" min="0" max="2" value="0.6"></div>
+      </div>
+    </div>
+
+    <div class="wz-page">
+      <p class="hint" style="margin-top:0">How often it wakes and how much it may spend in a day. Low energy slows it; surprise quickens it.</p>
+      <div class="wz-cards" id="wz-presets"></div>
+      <div class="al-form">
+        <div><label>Base interval (s)</label><input class="al-input" id="wz-base" type="number" min="5"></div>
+        <div><label>Min / max interval (s)</label><div style="display:flex;gap:.5rem"><input class="al-input" id="wz-min" type="number" min="5"><input class="al-input" id="wz-max" type="number" min="5"></div></div>
+        <div><label>Daily token budget</label><input class="al-input" id="wz-tokens" type="number" min="1000" step="1000"></div>
+        <div><label>Daily cost cap (USD)</label><input class="al-input" id="wz-cost" type="number" min="0" step="0.1"><div class="help">0 = tokens only.</div></div>
+      </div>
+    </div>
+
+    <div class="wz-page">
+      <dl class="wz-review" id="wz-review"></dl>
+      <label class="wz-check"><input type="checkbox" id="wz-workbench" checked> Give it a workbench (a folder of its own to read and write)</label>
+      <label class="wz-check"><input type="checkbox" id="wz-start" checked> Wake it as soon as it's created</label>
+      <p class="hint">Everything else starts at the defaults; tune it later under Configuration.</p>
+    </div>
+
+    <div class="wz-err" id="wz-err"></div>
+    <div class="wz-nav">
+      <button class="al-btn" id="wz-back" onclick="wzGo(-1)">&larr; Back</button>
+      <button class="al-btn b-acc" id="wz-next" onclick="wzGo(1)">Next &rarr;</button>
+    </div>
+  </div>
+</div>
+<!-- ═══ DELETE LOOP WIZARD ═══ -->
+<div class="al al-modal" id="dz-modal" onclick="if(event.target===this)closeDeleteWizard()">
+  <div class="al-modal-box" style="width:min(640px,100%)">
+    <h4><span>&#128465; Delete a loop</span><button class="al-x" onclick="closeDeleteWizard()">&times;</button></h4>
+    <div class="wz-steps"><div class="wz-step">1 &middot; Which</div><div class="wz-step">2 &middot; Its data</div><div class="wz-step">3 &middot; Confirm</div></div>
+
+    <div class="wz-page">
+      <p class="hint" style="margin-top:0">Pick the loop to remove. Built-in loops can be stopped but not deleted.</p>
+      <div class="wz-cards" id="dz-loops"></div>
+    </div>
+
+    <div class="wz-page">
+      <dl class="wz-review" id="dz-facts"></dl>
+      <div class="wz-cards" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+        <button type="button" class="wz-card" data-mode="archive" onclick="dzMode('archive')"><b>Archive it</b><span>Stops the loop and moves its config, journal and workbench into <span class="al-mono">agi_loop_archive/</span>. Nothing is lost; “Restore loop” brings it back.</span></button>
+        <button type="button" class="wz-card danger" data-mode="purge" onclick="dzMode('purge')"><b>Delete it for good</b><span>Stops the loop and erases its config, journal, beliefs and workbench. This can't be undone.</span></button>
+      </div>
+      <p class="hint" id="dz-untouched"></p>
+    </div>
+
+    <div class="wz-page">
+      <p id="dz-summary" style="margin-top:0;font-size:.86rem"></p>
+      <div class="al-form"><div class="full"><label>Type <span class="al-mono" id="dz-name"></span> to confirm</label><input class="al-input al-mono" id="dz-confirm" autocomplete="off" oninput="dzShow()"></div></div>
+    </div>
+
+    <div class="wz-err" id="dz-err"></div>
+    <div class="wz-nav">
+      <button class="al-btn" id="dz-back" onclick="dzGo(-1)">&larr; Back</button>
+      <button class="al-btn b-acc" id="dz-next" onclick="dzGo(1)">Next &rarr;</button>
+    </div>
+  </div>
+</div>
+<!-- ═══ RESTORE LOOP WIZARD ═══ -->
+<div class="al al-modal" id="rz-modal" onclick="if(event.target===this)closeRestoreWizard()">
+  <div class="al-modal-box" style="width:min(640px,100%)">
+    <h4><span>&#8634; Restore a loop</span><button class="al-x" onclick="closeRestoreWizard()">&times;</button></h4>
+    <div class="wz-steps"><div class="wz-step">1 &middot; Which</div><div class="wz-step">2 &middot; Bring it back</div></div>
+
+    <div class="wz-page">
+      <p class="hint" style="margin-top:0">Loops archived with “Delete loop”, newest first. Its config, journal, beliefs and workbench all come back.</p>
+      <div class="wz-cards" id="rz-list"></div>
+    </div>
+
+    <div class="wz-page">
+      <dl class="wz-review" id="rz-facts"></dl>
+      <div class="al-form"><div class="full"><label>Loop name</label><input class="al-input al-mono" id="rz-id" maxlength="24" oninput="rzShow()"><div class="help" id="rz-id-help"></div></div></div>
+      <label class="wz-check"><input type="checkbox" id="rz-start"> Wake it as soon as it's back</label>
+    </div>
+
+    <div class="wz-err" id="rz-err"></div>
+    <div class="wz-nav">
+      <button class="al-btn" id="rz-back" onclick="rzGo(-1)">&larr; Back</button>
+      <button class="al-btn b-acc" id="rz-next" onclick="rzGo(1)">Next &rarr;</button>
+    </div>
+  </div>
 </div>
 <div class="al-toast" id="al-toast"></div>
 
@@ -1200,6 +1327,269 @@ function fillConfigForm(cfg) {
   });
   fillModels();
 }
+/* ── New loop wizard ─────────────────────────────── */
+const WZ_LOOPS = {{ loops|tojson }};
+const WZ_PRESETS = [
+  {key: 'calm', name: 'Calm', desc: 'Wakes every ~15 min. Light on tokens — a slow-burning companion.',
+   v: {base: 900, min: 120, max: 1800, tokens: 300000, cost: 1}},
+  {key: 'balanced', name: 'Balanced', desc: 'Wakes every ~5 min. The recommended defaults.',
+   v: {base: 300, min: 60, max: 900, tokens: 1000000, cost: 5}},
+  {key: 'lively', name: 'Lively', desc: 'Wakes every ~2 min. Busy and curious — costs the most.',
+   v: {base: 120, min: 30, max: 600, tokens: 3000000, cost: 15}},
+];
+const WZ = {step: 0};
+function wzSlug(s) {
+  s = String(s || '').toLowerCase().replace(/_cannon$/, '').replace(/[^a-z0-9_]+/g, '_').replace(/^[^a-z]+/, '').slice(0, 24);
+  const root = s.length >= 2 ? s : 'loop';
+  let id = root, n = 2;
+  while (WZ_LOOPS.includes(id)) id = root.slice(0, 21) + '_' + n++;
+  return id;
+}
+function wzAgentChanged() {
+  const idEl = $('wz-id');
+  if (!idEl.dataset.touched) idEl.value = wzSlug($('wz-agent').value);
+}
+function wzFillModels() {
+  const id = $('wz-conn').value;
+  const conns = id ? AL.connections.filter(c => c.id === id) : AL.connections;
+  $('wz-models').innerHTML = [...new Set(conns.flatMap(c => c.models || []))].slice(0, 400)
+    .map(m => `<option value="${esc(m)}">`).join('');
+}
+function wzPreset(key) {
+  const p = WZ_PRESETS.find(x => x.key === key);
+  ['base', 'min', 'max', 'tokens', 'cost'].forEach(k => $('wz-' + k).value = p.v[k]);
+  document.querySelectorAll('#wz-presets .wz-card').forEach(c => c.classList.toggle('on', c.dataset.key === key));
+}
+function openWizard() {
+  WZ.step = 0;
+  $('wz-presets').innerHTML = WZ_PRESETS.map(p =>
+    `<button type="button" class="wz-card" data-key="${p.key}" onclick="wzPreset('${p.key}')"><b>${esc(p.name)}</b><span>${esc(p.desc)}</span></button>`).join('');
+  // Start on an agent that doesn't have a loop yet.
+  const sel = $('wz-agent');
+  const free = [...sel.options].find(o => wzSlug(o.value) === o.value.toLowerCase().replace(/_cannon$/, ''));
+  if (free) sel.value = free.value;
+  delete $('wz-id').dataset.touched;
+  wzAgentChanged();
+  $('wz-conn').value = ''; $('wz-model').value = ''; $('wz-temp').value = 0.6;
+  wzFillModels();
+  wzPreset('balanced');
+  $('wz-workbench').checked = true; $('wz-start').checked = true;
+  wzShow();
+  $('wz-modal').classList.add('open');
+}
+function closeWizard() { $('wz-modal').classList.remove('open'); }
+function wzShow() {
+  document.querySelectorAll('#wz-modal .wz-page').forEach((el, i) => el.classList.toggle('on', i === WZ.step));
+  document.querySelectorAll('#wz-modal .wz-step').forEach((el, i) => {
+    el.classList.toggle('on', i === WZ.step); el.classList.toggle('done', i < WZ.step);
+  });
+  $('wz-back').style.visibility = WZ.step ? 'visible' : 'hidden';
+  $('wz-next').innerHTML = WZ.step === 3 ? '&#10003; Create loop' : 'Next &rarr;';
+  $('wz-err').textContent = '';
+  if (WZ.step === 3) wzReview();
+}
+function wzCheck() {
+  if (WZ.step === 0) {
+    const id = $('wz-id').value.trim().toLowerCase();
+    if (!/^[a-z][a-z0-9_]{1,23}$/.test(id)) return 'Loop name: 2–24 lowercase letters, digits or _, starting with a letter.';
+    if (WZ_LOOPS.includes(id)) return `There's already a loop called '${id}'.`;
+  }
+  if (WZ.step === 2) {
+    const min = +$('wz-min').value, max = +$('wz-max').value, base = +$('wz-base').value;
+    if (!(min >= 5)) return 'The shortest interval is 5 seconds.';
+    if (max < min) return 'Max interval must be at least the min.';
+    if (base < min || base > max) return 'Base interval has to sit between min and max.';
+    if (!(+$('wz-tokens').value >= 1000)) return 'Give it at least 1,000 tokens a day.';
+  }
+  return '';
+}
+function wzConfig() {
+  return {
+    agent: $('wz-agent').value, connection_id: $('wz-conn').value, model: $('wz-model').value.trim(),
+    temperature: Number($('wz-temp').value || 0.6),
+    base_interval_seconds: +$('wz-base').value, min_interval_seconds: +$('wz-min').value, max_interval_seconds: +$('wz-max').value,
+    daily_token_budget: +$('wz-tokens').value, daily_cost_cap: +$('wz-cost').value || 0,
+    workbench: $('wz-workbench').checked,
+  };
+}
+function wzDur(sec) { return sec < 60 ? sec + ' s' : sec < 3600 ? +(sec / 60).toFixed(1) + ' min' : +(sec / 3600).toFixed(1) + ' h'; }
+function wzReview() {
+  const c = wzConfig(), conn = AL.connections.find(x => x.id === c.connection_id);
+  const rows = [
+    ['Loop', $('wz-id').value.trim().toLowerCase()], ['Agent', c.agent],
+    ['Connection', conn ? `${conn.name} (${conn.provider})` : 'Agent default'], ['Model', c.model || 'profile default'],
+    ['Temperature', c.temperature],
+    ['Wakes', `about every ${wzDur(c.base_interval_seconds)} (between ${wzDur(c.min_interval_seconds)} and ${wzDur(c.max_interval_seconds)})`],
+    ['Energy', `${tok(c.daily_token_budget)} tokens/day` + (c.daily_cost_cap ? ` · cap $${c.daily_cost_cap.toFixed(2)}` : '')],
+  ];
+  $('wz-review').innerHTML = rows.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+}
+async function wzGo(dir) {
+  if (dir < 0) { WZ.step = Math.max(0, WZ.step - 1); return wzShow(); }
+  const err = wzCheck();
+  if (err) { $('wz-err').textContent = err; return; }
+  if (WZ.step < 3) { WZ.step++; return wzShow(); }
+  const btn = $('wz-next'); btn.disabled = true;
+  try {
+    const r = await fetch('/api/agi-loop/loops', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({id: $('wz-id').value.trim().toLowerCase(), config: wzConfig(), start: $('wz-start').checked})});
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) { $('wz-err').textContent = data.reason || data.error || ('HTTP ' + r.status); return; }
+    location.href = '/agi-loop?loop=' + encodeURIComponent(data.id);
+  } finally { btn.disabled = false; }
+}
+if (new URLSearchParams(location.search).has('new')) setTimeout(openWizard, 0);
+
+/* ── Delete loop wizard ─────────────────────────── */
+const DZ_BUILT_IN = {{ built_in_loops|tojson }};
+const DZ = {step: 0, id: '', info: null, mode: 'archive'};
+function dzSize(b) { return b >= 1048576 ? (b / 1048576).toFixed(1) + ' MB' : b >= 1024 ? Math.round(b / 1024) + ' KB' : b + ' B'; }
+function openDeleteWizard() {
+  const custom = WZ_LOOPS.filter(l => !DZ_BUILT_IN.includes(l));
+  $('dz-loops').innerHTML = WZ_LOOPS.map(l => {
+    const built = DZ_BUILT_IN.includes(l);
+    return `<button type="button" class="wz-card" data-id="${esc(l)}" ${built ? 'disabled' : ''} onclick="dzPick('${esc(l)}')">`
+      + `<b>${esc(l)}</b><span>${built ? 'Built in — can\'t be deleted' : (l === LOOP_ID ? 'The loop you\'re on' : 'Made with the wizard')}</span></button>`;
+  }).join('');
+  DZ.step = 0; DZ.info = null; DZ.mode = 'archive';
+  DZ.id = custom.includes(LOOP_ID) ? LOOP_ID : '';
+  $('dz-confirm').value = '';
+  dzShow();
+  if (!custom.length) $('dz-err').textContent = 'There are no wizard-made loops to delete. Use “New loop” to make one.';
+  $('dz-modal').classList.add('open');
+}
+function closeDeleteWizard() { $('dz-modal').classList.remove('open'); }
+function dzPick(id) { DZ.id = id; DZ.info = null; dzShow(); }
+function dzMode(m) { DZ.mode = m; dzShow(); }
+function dzShow() {
+  document.querySelectorAll('#dz-modal .wz-page').forEach((el, i) => el.classList.toggle('on', i === DZ.step));
+  document.querySelectorAll('#dz-modal .wz-step').forEach((el, i) => {
+    el.classList.toggle('on', i === DZ.step); el.classList.toggle('done', i < DZ.step);
+  });
+  document.querySelectorAll('#dz-loops .wz-card').forEach(c => c.classList.toggle('on', c.dataset.id === DZ.id));
+  document.querySelectorAll('#dz-modal [data-mode]').forEach(c => c.classList.toggle('on', c.dataset.mode === DZ.mode));
+  $('dz-back').style.visibility = DZ.step ? 'visible' : 'hidden';
+  const next = $('dz-next');
+  if (DZ.step === 2) {
+    next.className = 'al-btn b-danger';
+    next.innerHTML = DZ.mode === 'purge' ? '&#128465; Delete for good' : '&#128230; Archive loop';
+    next.disabled = $('dz-confirm').value.trim().toLowerCase() !== DZ.id;
+  } else {
+    next.className = 'al-btn b-acc'; next.innerHTML = 'Next &rarr;'; next.disabled = false;
+  }
+  $('dz-err').textContent = '';
+  if (DZ.step === 1 && DZ.info) {
+    const i = DZ.info;
+    $('dz-facts').innerHTML = [['Loop', i.id], ['Agent', i.agent], ['State', i.running ? 'Running — it will be stopped first' : 'Stopped'],
+      ['Data', `${i.files} file${i.files === 1 ? '' : 's'} · ${dzSize(i.bytes)} (journal, beliefs, workbench)`]]
+      .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+    $('dz-untouched').textContent = `Not touched either way: the agent ${i.agent} itself, the group chat history, and its Linux machine (/home/${i.linux_user}).`;
+  }
+  if (DZ.step === 2) {
+    $('dz-name').textContent = DZ.id;
+    $('dz-summary').innerHTML = DZ.mode === 'purge'
+      ? `<b style="color:#fca5a5">${esc(DZ.id)}</b> will be stopped and its files erased. This can't be undone.`
+      : `<b>${esc(DZ.id)}</b> will be stopped and moved to the archive.`;
+  }
+}
+async function dzGo(dir) {
+  if (dir < 0) { DZ.step = Math.max(0, DZ.step - 1); return dzShow(); }
+  if (DZ.step === 0) {
+    if (!DZ.id) { $('dz-err').textContent = 'Pick a loop.'; return; }
+    const r = await fetch('/api/agi-loop/loops/' + encodeURIComponent(DZ.id));
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) { $('dz-err').textContent = data.reason || data.error || ('HTTP ' + r.status); return; }
+    DZ.info = data; DZ.step = 1; return dzShow();
+  }
+  if (DZ.step === 1) { DZ.step = 2; dzShow(); return $('dz-confirm').focus(); }
+  const btn = $('dz-next'); btn.disabled = true;
+  btn.textContent = DZ.info && DZ.info.running ? 'Stopping and removing…' : 'Removing…';
+  try {
+    const r = await fetch('/api/agi-loop/loops/' + encodeURIComponent(DZ.id), {method: 'DELETE',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({confirm: $('dz-confirm').value.trim(), mode: DZ.mode})});
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) { dzShow(); $('dz-err').textContent = data.reason || data.error || ('HTTP ' + r.status); return; }
+    closeDeleteWizard();
+    toast(data.archived_to ? `${data.id} archived. “Restore loop” brings it back` : `${data.id} deleted`);
+    // The loop is gone; leave its page if we were on it.
+    setTimeout(() => { location.href = DZ.id === LOOP_ID ? '/agi-loop' : location.href; }, 900);
+  } catch (e) {
+    dzShow(); $('dz-err').textContent = 'Network error: ' + e.message;
+  }
+}
+if (new URLSearchParams(location.search).has('delete')) setTimeout(openDeleteWizard, 0);
+
+/* ── Restore loop wizard ────────────────────────── */
+const RZ = {step: 0, list: [], loops: [], pick: null};
+function rzFree(id) {
+  let name = id, n = 2;
+  while (RZ.loops.includes(name)) name = id.slice(0, 21) + '_' + n++;
+  return name;
+}
+async function openRestoreWizard() {
+  RZ.step = 0; RZ.pick = null;
+  $('rz-list').innerHTML = '<div class="al-empty">Loading…</div>';
+  $('rz-start').checked = false;
+  rzShow();
+  $('rz-modal').classList.add('open');
+  const r = await fetch('/api/agi-loop/archive');
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) { $('rz-list').innerHTML = ''; $('rz-err').textContent = data.reason || data.error || ('HTTP ' + r.status); return; }
+  RZ.list = data.archived || []; RZ.loops = data.loops || [];
+  $('rz-list').innerHTML = RZ.list.length ? RZ.list.map((a, i) =>
+    `<button type="button" class="wz-card" data-i="${i}" onclick="rzPick(${i})"><b>${esc(a.id)}</b>`
+    + `<span>${esc(a.agent || '?')} · archived ${esc(new Date(a.archived_at).toLocaleString())}<br>${a.files} files · ${esc(dzSize(a.bytes))}</span></button>`).join('')
+    : '<div class="al-empty">Nothing in the archive. Loops land here when you delete them with “Archive it”.</div>';
+}
+function closeRestoreWizard() { $('rz-modal').classList.remove('open'); }
+function rzPick(i) {
+  RZ.pick = RZ.list[i];
+  $('rz-id').value = rzFree(RZ.pick.id);
+  rzShow();
+}
+function rzShow() {
+  document.querySelectorAll('#rz-modal .wz-page').forEach((el, i) => el.classList.toggle('on', i === RZ.step));
+  document.querySelectorAll('#rz-modal .wz-step').forEach((el, i) => {
+    el.classList.toggle('on', i === RZ.step); el.classList.toggle('done', i < RZ.step);
+  });
+  document.querySelectorAll('#rz-list .wz-card').forEach(c => c.classList.toggle('on', RZ.pick && RZ.list[+c.dataset.i] === RZ.pick));
+  $('rz-back').style.visibility = RZ.step ? 'visible' : 'hidden';
+  $('rz-next').innerHTML = RZ.step === 1 ? '&#8634; Restore loop' : 'Next &rarr;';
+  $('rz-err').textContent = '';
+  if (RZ.step === 1 && RZ.pick) {
+    const a = RZ.pick;
+    $('rz-facts').innerHTML = [['Was', a.id], ['Agent', a.agent || '?'], ['Archived', new Date(a.archived_at).toLocaleString()],
+      ['Data', `${a.files} files · ${dzSize(a.bytes)}`]].map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
+    const id = $('rz-id').value.trim().toLowerCase();
+    $('rz-id-help').textContent = RZ.loops.includes(a.id) && id !== a.id
+      ? `'${a.id}' is taken by another loop now, so it comes back under a new name.`
+      : 'It comes back stopped unless you wake it below.';
+  }
+}
+async function rzGo(dir) {
+  if (dir < 0) { RZ.step = 0; return rzShow(); }
+  if (RZ.step === 0) {
+    if (!RZ.pick) { $('rz-err').textContent = RZ.list.length ? 'Pick an archived loop.' : 'Nothing to restore.'; return; }
+    RZ.step = 1; rzShow(); return $('rz-id').focus();
+  }
+  const id = $('rz-id').value.trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]{1,23}$/.test(id)) { $('rz-err').textContent = 'Loop name: 2–24 lowercase letters, digits or _, starting with a letter.'; return; }
+  if (RZ.loops.includes(id)) { $('rz-err').textContent = `There's already a loop called '${id}'.`; return; }
+  const btn = $('rz-next'); btn.disabled = true; btn.textContent = 'Restoring…';
+  try {
+    const r = await fetch('/api/agi-loop/archive/' + encodeURIComponent(RZ.pick.name) + '/restore', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify({id, start: $('rz-start').checked})});
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok || !data.ok) { rzShow(); $('rz-err').textContent = data.reason || data.error || ('HTTP ' + r.status); return; }
+    closeRestoreWizard();
+    toast(`${data.id} is back` + (data.started ? ' and awake' : ''));
+    setTimeout(() => { location.href = '/agi-loop?loop=' + encodeURIComponent(data.id); }, 700);
+  } catch (e) {
+    rzShow(); $('rz-err').textContent = 'Network error: ' + e.message;
+  } finally { btn.disabled = false; }
+}
+if (new URLSearchParams(location.search).has('restore')) setTimeout(openRestoreWizard, 0);
+
 function fillModels() {
   const id = $('cfg-form').querySelector('[name="connection_id"]').value;
   const conns = id ? AL.connections.filter(c => c.id === id) : AL.connections;

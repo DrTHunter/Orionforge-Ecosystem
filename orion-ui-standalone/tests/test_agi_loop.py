@@ -762,6 +762,84 @@ def test_cache_llm_and_gate():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_create_and_delete_loops():
+    print("\n=== New loop and delete loop wizards ===")
+    import src.agi_loop as al
+    tmp = Path(tempfile.mkdtemp())
+    orig = al.CONFIG_FILE, al.DATA_DIR
+    al.CONFIG_FILE = tmp / "config" / "agi_loop.json"
+    al.DATA_DIR = tmp / "data" / "orion" / "agi_loop"
+    al.CONFIG_FILE.parent.mkdir(parents=True)
+    try:
+        cfg = LoopConfig()
+        cfg.agent = "aristotle"
+        check("create registers a loop", al.create_loop("night_owl", cfg) == "night_owl"
+              and "night_owl" in al.loop_ids())
+        try:
+            al.create_loop("night_owl", cfg)
+            check("create refuses a taken id", False)
+        except ValueError:
+            check("create refuses a taken id", True)
+        data = al.data_dir("night_owl")
+        (data / "workbench").mkdir(parents=True)
+        (data / "journal.jsonl").write_text("{}\n", encoding="utf-8")
+        (data / "workbench" / "note.md").write_text("hi", encoding="utf-8")
+
+        for bad in ("supervisor", "k_os", "nobody", "../etc"):
+            try:
+                al.delete_loop(bad)
+                check(f"delete refuses '{bad}'", False)
+            except ValueError:
+                check(f"delete refuses '{bad}'", True)
+
+        dest = al.delete_loop("night_owl")
+        check("archive: loop is gone", "night_owl" not in al.loop_ids())
+        check("archive: config kept", (dest / "config.json").exists()
+              and json.loads((dest / "config.json").read_text(encoding="utf-8")).get("agent") == "aristotle")
+        check("archive: data kept", (dest / "data" / "workbench" / "note.md").read_text(encoding="utf-8") == "hi")
+        check("archive: lives in agi_loop_archive", dest.parent == al.archive_dir()
+              and dest.name.startswith("night_owl-"))
+        check("archive: nothing left behind", not data.exists()
+              and not al.CONFIG_FILE.with_name("agi_loop_night_owl.json").exists())
+        check("archived id can be reused", al.create_loop("night_owl", cfg) == "night_owl")
+
+        al.set_daemon(object(), "night_owl")
+        al.data_dir("night_owl").mkdir(parents=True)
+        (al.data_dir("night_owl") / "journal.jsonl").write_text("{}\n", encoding="utf-8")
+        check("purge returns nothing", al.delete_loop("night_owl", archive=False) is None)
+        check("purge: config and data erased", "night_owl" not in al.loop_ids()
+              and not al.data_dir("night_owl").exists()
+              and not al.CONFIG_FILE.with_name("agi_loop_night_owl.json").exists())
+        check("purge: daemon forgotten", al._daemons.get("night_owl") is None)
+        check("purge: first archive untouched", (dest / "config.json").exists())
+
+        listed = al.archived_loops()
+        check("archive is listed", [a["name"] for a in listed] == [dest.name]
+              and listed[0]["id"] == "night_owl" and listed[0]["agent"] == "aristotle")
+        for bad in ("../config", "night_owl", dest.name + "/..", ""):
+            try:
+                al.restore_loop(bad)
+                check(f"restore refuses archive '{bad}'", False)
+            except ValueError:
+                check(f"restore refuses archive '{bad}'", True)
+        al.create_loop("night_owl", cfg)
+        try:
+            al.restore_loop(dest.name)
+            check("restore refuses a taken name", False)
+        except ValueError:
+            check("restore refuses a taken name", True)
+        check("refused restore leaves the archive", (dest / "config.json").exists())
+        check("restore under a new name", al.restore_loop(dest.name, "owl_two") == "owl_two"
+              and "owl_two" in al.loop_ids())
+        check("restore brings data back",
+              (al.data_dir("owl_two") / "workbench" / "note.md").read_text(encoding="utf-8") == "hi"
+              and al.load_config("owl_two").agent == "aristotle")
+        check("restore empties the archive", not dest.exists() and al.archived_loops() == [])
+    finally:
+        al.CONFIG_FILE, al.DATA_DIR = orig
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_prediction()
     test_embedder()
@@ -774,6 +852,7 @@ if __name__ == "__main__":
     test_daemon_tick()
     test_daemon_tasks_and_limits()
     test_multiple_loops()
+    test_create_and_delete_loops()
     test_group_chat()
     test_long_messages()
     test_documents()

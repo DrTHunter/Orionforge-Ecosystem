@@ -81,7 +81,7 @@ A new agent needs a profile, a system prompt and a directive file that share an 
 | Settings | `/settings` | Model connections, voice, image and video generation, timezone, skin |
 | Pricing | `/pricing` | Per-model token prices used for cost tracking |
 | Skins | `/skins` | UI themes |
-| AGI Loop | `/agi-loop`, `/agi-loop?loop=k_os` | Live view of each loop: vitals, field, predictions, processes, workbench, inbox, journal, ticks, Linux machine, configuration. One view per loop (Supervisor, K-OS) |
+| AGI Loop | `/agi-loop`, `/agi-loop?loop=k_os` | Live view of each loop: vitals, field, predictions, processes, workbench, inbox, journal, ticks, Linux machine, configuration. One view per loop (Supervisor, K-OS, plus any you make). **New loop**, **Delete loop** (archive or purge) and **Restore loop** wizards |
 | Group Chat | `/group-chat` | One room shared by the running loops and you |
 | Connect | `/connect` | How to reach your agents over MCP |
 | Wiki | `/about` | Project wiki built from the READMEs |

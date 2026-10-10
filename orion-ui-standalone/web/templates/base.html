@@ -178,6 +178,8 @@
         <a href="/agi-loop?loop=k_os" id="nav-agi-loop-kos-link" class="nav-link {% if page == 'agi-loop-k_os' %}active{% endif %}" style="display:none;">
           <span class="nav-icon">♾</span><span class="nav-label">K-OS Loop</span>
         </a>
+        <!-- Loops made with the New-loop wizard — filled in by JS for the owner -->
+        <div id="nav-agi-loop-custom" data-page="{{ page }}" style="display:none;"></div>
         <a href="/group-chat" id="nav-group-chat-link" class="nav-link {% if page == 'group-chat' %}active{% endif %}" style="display:none;">
           <span class="nav-icon">💬</span><span class="nav-label">Group Chat</span>
         </a>
@@ -648,6 +650,25 @@ select optgroup{color:${tm}!important}
       }).catch(() => {});
     })();
 
+
+    // Loops made with the New-loop wizard, listed under the built-in ones.
+    function showCustomLoops() {
+      const box = document.getElementById('nav-agi-loop-custom');
+      if (!box || box.dataset.loaded) return;
+      box.dataset.loaded = '1';
+      fetch('/api/agi-loop/loops').then(r => r.ok ? r.json() : {loops: []}).then(j => {
+        for (const l of (j.loops || []).filter(l => !l.built_in)) {
+          const a = document.createElement('a');
+          a.href = '/agi-loop?loop=' + encodeURIComponent(l.id);
+          a.className = 'nav-link' + (box.dataset.page === 'agi-loop-' + l.id ? ' active' : '');
+          a.innerHTML = '<span class="nav-icon">♾</span><span class="nav-label"></span>';
+          a.querySelector('.nav-label').textContent = l.id.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') + ' Loop';
+          box.appendChild(a);
+        }
+        box.style.display = '';
+      }).catch(() => {});
+    }
+
     /* ── Auth: User display & logout ─────────────────────────── */
     (function loadAuthState() {
       fetch('/api/auth/user').then(r => r.json()).then(d => {
@@ -657,6 +678,7 @@ select optgroup{color:${tm}!important}
             const el = document.getElementById(id);
             if (el) el.style.display = '';
           });
+          showCustomLoops();
         }
         if (d.authenticated && d.user) {
           const section = document.getElementById('nav-user-section');
@@ -675,6 +697,7 @@ select optgroup{color:${tm}!important}
             if (agiLink) agiLink.style.display = '';
             const agiKosLink = document.getElementById('nav-agi-loop-kos-link');
             if (agiKosLink) agiKosLink.style.display = '';
+            showCustomLoops();
             const groupLink = document.getElementById('nav-group-chat-link');
             if (groupLink) groupLink.style.display = '';
           }

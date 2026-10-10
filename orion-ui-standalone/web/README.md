@@ -218,6 +218,12 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989 --reload
 |-------|-------------|
 | `GET /api/skin` | Get active skin |
 | `PUT /api/skin` | Set active skin |
+| `GET /api/agi-loop/loops` | List loops with their agents and whether each is built in |
+| `POST /api/agi-loop/loops` | New loop wizard: register a loop (`id`, `config`, optional `start`) |
+| `GET /api/agi-loop/loops/{id}` | Delete loop wizard: agent, built in or not, running or not, data files and size |
+| `DELETE /api/agi-loop/loops/{id}` | Delete loop wizard: stop it, then archive (default) or purge. Body: `confirm` (the id) and `mode` (`archive` or `purge`) |
+| `GET /api/agi-loop/archive` | Restore loop wizard: archived loops, newest first |
+| `POST /api/agi-loop/archive/{name}/restore` | Restore loop wizard: bring an archived loop back, optionally under a new `id`; `start` wakes it |
 | `GET /api/agi-loop/config` | AGI loop config |
 | `POST /api/agi-loop/config` | Update AGI loop config |
 | `POST /api/agi-loop/{start,stop,pause,resume,wake,message,reset-world}` | Control the loop / leave a message at its door |

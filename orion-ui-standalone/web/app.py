@@ -13,6 +13,7 @@ Prompt Injection Order
 """
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -3538,17 +3539,23 @@ async def api_saved_memory_profiles_delete(filename: str):
 # agi_loop_<id>.json for the others) — no model router. Pick a loop with ?loop=<id>.
 from src.agi_loop import (
     DEFAULT_LOOP as _DEFAULT_LOOP,
+    LOOP_DEFAULT_AGENTS as _LOOP_DEFAULT_AGENTS,
     LoopConfig,
+    archived_loops as _archived_loops,
     LoopDaemon,
     config_file as _loop_config_file,
+    create_loop as _create_loop,
     data_dir as _loop_data_dir,
+    delete_loop as _delete_loop,
     get_daemon as _get_loop_daemon,
     load_config as _load_loop_config,
     loop_ids as _loop_ids,
     normalize_loop_id as _normalize_loop_id,
+    restore_loop as _restore_loop,
     set_daemon as _set_loop_daemon,
 )
 from src.agi_loop.daemon import Completion as _LoopCompletion
+from src.agi_loop.linux import linux_user as _loop_linux_user
 from src.agi_loop.embedding import SentenceEmbedder as _LoopEmbedder
 
 # One MiniLM instance for the loop's field, loaded on first use.
@@ -3842,6 +3849,8 @@ async def page_agi_loop(request: Request):
         "page": "agi-loop" if _lid(request) == _DEFAULT_LOOP else f"agi-loop-{_lid(request)}",
         "loop": _lid(request),
         "loops": _loop_ids(),
+        "built_in_loops": list(_LOOP_DEFAULT_AGENTS),
+        "linux_user": _loop_linux_user(_lid(request)),
         "agents": _list_agents(),
         "config": d.config.to_dict(),
         "connections": connections,
@@ -3886,6 +3895,162 @@ async def api_agi_loop_start(request: Request):
         return JSONResponse({"ok": False, "reason": "Already running"}, 409)
     d.start()
     return JSONResponse({"ok": True, "message": f"{d.config.agent} is awake"})
+
+
+@app.get("/api/agi-loop/loops")
+async def api_agi_loop_list(request: Request):
+    if denied := _agi_denied(request):
+        return denied
+    return JSONResponse({"loops": [{"id": lid, "agent": _load_loop_config(lid).agent, "built_in": lid in _LOOP_DEFAULT_AGENTS}
+                                   for lid in _loop_ids()]})
+
+
+@app.post("/api/agi-loop/loops")
+async def api_agi_loop_create(request: Request):
+    """The new-loop wizard: register a loop under a new id with its first config, and optionally wake it."""
+    if denied := _agi_denied(request):
+        return denied
+    body = await request.json()
+    if not isinstance(body, dict):
+        return JSONResponse({"ok": False, "reason": "Expected an object"}, 400)
+    cfg = LoopConfig.from_dict(body.get("config") if isinstance(body.get("config"), dict) else {})
+    if cfg.agent not in _list_agents():
+        return JSONResponse({"ok": False, "reason": f"No agent called '{cfg.agent}'"}, 400)
+    try:
+        lid = _create_loop(str(body.get("id") or ""), cfg)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, 400)
+    d = _loop_daemon(True, lid)
+    started = False
+    if body.get("start"):
+        try:
+            d.start()
+            started = True
+        except Exception as exc:
+            log.warning("[agi_loop] new loop %s made but didn't start: %s", lid, exc)
+    return JSONResponse({"ok": True, "id": lid, "started": started, "config": cfg.to_dict()})
+
+
+def _loop_footprint(lid: str) -> dict:
+    """What deleting a loop would take with it: its data folder, counted."""
+    files, size = 0, 0
+    root = _loop_data_dir(lid)
+    if root.exists():
+        for p in root.rglob("*"):
+            if p.is_file():
+                files += 1
+                with contextlib.suppress(OSError):
+                    size += p.stat().st_size
+    return {"files": files, "bytes": size}
+
+
+@app.get("/api/agi-loop/loops/{loop_id}")
+async def api_agi_loop_describe(loop_id: str, request: Request):
+    """For the delete wizard: is it built in, is it running, and how much does it hold."""
+    if denied := _agi_denied(request):
+        return denied
+    loop_id = loop_id.strip().lower()
+    if loop_id not in _loop_ids():
+        return JSONResponse({"ok": False, "reason": f"There's no loop called '{loop_id}'"}, 404)
+    d = _get_loop_daemon(loop_id)
+    return JSONResponse({
+        "ok": True, "id": loop_id, "agent": _load_loop_config(loop_id).agent,
+        "built_in": loop_id in _LOOP_DEFAULT_AGENTS, "running": bool(d and d.running),
+        "linux_user": _loop_linux_user(loop_id),
+        **await asyncio.to_thread(_loop_footprint, loop_id),
+    })
+
+
+@app.delete("/api/agi-loop/loops/{loop_id}")
+async def api_agi_loop_delete(loop_id: str, request: Request):
+    """The delete-loop wizard: stop the loop, then archive (default) or purge its config and data.
+
+    Body: ``confirm`` (the loop's id, typed back) and ``mode`` (``"archive"`` or ``"purge"``).
+    """
+    if denied := _agi_denied(request):
+        return denied
+    body = await request.json()
+    loop_id = loop_id.strip().lower()
+    if not isinstance(body, dict) or str(body.get("confirm", "")).strip().lower() != loop_id:
+        return JSONResponse({"ok": False, "reason": "Type the loop's name to confirm"}, 400)
+    mode = body.get("mode") or "archive"
+    if mode not in ("archive", "purge"):
+        return JSONResponse({"ok": False, "reason": "mode must be archive or purge"}, 400)
+    if loop_id in _LOOP_DEFAULT_AGENTS:
+        return JSONResponse({"ok": False, "reason": f"'{loop_id}' is a built-in loop and can't be deleted"}, 400)
+    d = _get_loop_daemon(loop_id)
+    if d is not None and (d.running or (d.task and not d.task.done())):
+        d.stop("deleted")
+        # Let a call in flight finish before its folder moves, but don't wait forever.
+        if d.task and not d.task.done():
+            with contextlib.suppress(asyncio.TimeoutError, asyncio.CancelledError, Exception):
+                await asyncio.wait_for(asyncio.shield(d.task), timeout=30)
+            if not d.task.done():
+                d.task.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await d.task
+    try:
+        dest = await asyncio.to_thread(_delete_loop, loop_id, mode == "archive")
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, 400)
+    except OSError as exc:
+        return JSONResponse({"ok": False, "reason": f"Couldn't move its files: {exc}"}, 500)
+    with contextlib.suppress(Exception):
+        _group_chat.post("watchdog", "watchdog",
+                         f"The loop '{loop_id}' was {'archived' if dest else 'deleted'} by the operator.")
+    return JSONResponse({"ok": True, "id": loop_id, "mode": mode,
+                         "archived_to": f"{dest.parent.name}/{dest.name}" if dest else None})
+
+
+def _archive_listing() -> list:
+    out = []
+    for a in _archived_loops():
+        size = files = 0
+        for p in a["path"].rglob("*"):
+            if p.is_file():
+                files += 1
+                with contextlib.suppress(OSError):
+                    size += p.stat().st_size
+        out.append({k: a[k] for k in ("name", "id", "archived_at", "agent")} | {"files": files, "bytes": size})
+    return out
+
+
+@app.get("/api/agi-loop/archive")
+async def api_agi_loop_archive(request: Request):
+    """For the restore wizard: archived loops, newest first."""
+    if denied := _agi_denied(request):
+        return denied
+    return JSONResponse({"archived": await asyncio.to_thread(_archive_listing), "loops": _loop_ids()})
+
+
+@app.post("/api/agi-loop/archive/{archive_name}/restore")
+async def api_agi_loop_restore(archive_name: str, request: Request):
+    """Bring an archived loop back, under its old name or ``id``. It comes back stopped unless ``start``."""
+    if denied := _agi_denied(request):
+        return denied
+    body = await request.json()
+    if not isinstance(body, dict):
+        body = {}
+    try:
+        lid = await asyncio.to_thread(_restore_loop, archive_name, str(body.get("id") or "") or None)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, 400)
+    except OSError as exc:
+        return JSONResponse({"ok": False, "reason": f"Couldn't move its files back: {exc}"}, 500)
+    d = _loop_daemon(True, lid)
+    # It was stopped to be archived; it doesn't wake on its own after a restart.
+    with contextlib.suppress(OSError):
+        d.autostart_file.unlink()
+    started = False
+    if body.get("start"):
+        try:
+            d.start()
+            started = True
+        except Exception as exc:
+            log.warning("[agi_loop] restored loop %s didn't start: %s", lid, exc)
+    with contextlib.suppress(Exception):
+        _group_chat.post("watchdog", "watchdog", f"The loop '{lid}' was restored from the archive.")
+    return JSONResponse({"ok": True, "id": lid, "started": started})
 
 
 @app.post("/api/agi-loop/{action}")

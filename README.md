@@ -138,7 +138,13 @@ Beyond chat, OrionForge can run an agent as a **loop**: a wall-clock daemon (`or
 - **Watchdog** — an engine-side witness that checks process liveness and schedule presence separately, so a loop's own account of itself is never the only evidence.
 - **A Linux machine (optional)** — a loop can be given its own Ubuntu sandbox (`services/agent-linux`) so commands never run on your host. Off unless you deploy one and set `SUPERVISOR_LINUX_URL` / `SUPERVISOR_LINUX_TOKEN` (or `KOS_LINUX_*`).
 
-Two loops are configured: **Supervisor** (`/agi-loop`) and **K-OS** (`/agi-loop?loop=k_os`). They don't start on a fresh install — you start them. (A loop you started resumes after a restart.)
+Two loops are built in: **Supervisor** (`/agi-loop`) and **K-OS** (`/agi-loop?loop=k_os`). They don't start on a fresh install — you start them. (A loop you started resumes after a restart.)
+
+Three wizards on the loop page manage the rest:
+
+- **New loop**: pick an agent and a loop name, a connection and model, a rhythm (Calm, Balanced or Lively, or your own intervals and daily energy), review, create. The loop exists because its config file (`config/agi_loop_<id>.json`) does, so the sidebar, group chat, watchdog and restart pick it up.
+- **Delete loop**: pick a loop you made, see what it holds, then **Archive** it (moved to `data/orion/agi_loop_archive/<id>-<time>/`, nothing lost) or **Delete for good**, and type its name to confirm. A running loop is stopped first. Built-in loops can't be deleted.
+- **Restore loop**: bring an archived loop back with its config, journal, beliefs and workbench, under a new name if its old one has been taken. It comes back stopped unless you tick “wake it”.
 
 ## Tools
 

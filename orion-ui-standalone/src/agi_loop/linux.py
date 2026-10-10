@@ -43,6 +43,11 @@ DEFINITION = {
 }
 
 
+def linux_user(loop_id: str) -> str:
+    """The loop's user on its machine (and so its home, /home/<user>)."""
+    return "".join(c for c in (loop_id or "") if c.isalnum()).lower()
+
+
 class Linux:
     def __init__(self, url: str, token: str, user: str = "supervisor"):
         self.url = url.rstrip("/")
@@ -51,12 +56,13 @@ class Linux:
 
     @classmethod
     def from_env(cls, loop_id: str = "supervisor") -> Optional["Linux"]:
-        """Each loop has its own machine: SUPERVISOR_LINUX_URL/TOKEN for supervisor, KOS_LINUX_URL/TOKEN for k_os."""
-        prefix = {"supervisor": "SUPERVISOR", "k_os": "KOS"}.get(loop_id)
-        if not prefix:
+        """Each loop has its own machine: SUPERVISOR_LINUX_URL/TOKEN for supervisor, KOS_LINUX_URL/TOKEN for k_os.
+        A wizard-made loop uses its id without underscores, upper-cased (night_owl → NIGHTOWL_LINUX_URL/TOKEN)."""
+        user = linux_user(loop_id)
+        if not user:
             return None
+        prefix = user.upper()
         url, token = os.environ.get(f"{prefix}_LINUX_URL", ""), os.environ.get(f"{prefix}_LINUX_TOKEN", "")
-        user = {"supervisor": "supervisor", "k_os": "kos"}[loop_id]
         return cls(url, token, user) if url and token else None
 
     def definition(self) -> dict:

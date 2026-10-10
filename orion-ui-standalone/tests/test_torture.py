@@ -11666,7 +11666,7 @@ def test_agi_loop_preamble_and_linux():
     check("nav has a K-OS Loop link", 'href="/agi-loop?loop=k_os" id="nav-agi-loop-kos-link"' in base and ">K-OS Loop</span>" in base)
     check("nav has no links to removed loops", "loop=madara" not in base and "loop=orion" not in base)
     loop_page = (web / "agi_loop.html").read_text(encoding="utf-8")
-    check("loop page shows each mind's own home", "{'k_os': 'kos'}.get(loop, 'supervisor')" in loop_page)
+    check("loop page shows each mind's own home", "/home/{{ linux_user }}" in loop_page)
 
 
 # ═════════════════════════════════════════════
