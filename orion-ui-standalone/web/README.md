@@ -112,14 +112,16 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989 --reload
 | `DELETE /api/chats/folders/{folder_id}` | Delete folder |
 | `PUT /api/chats/{chat_id}/move` | Move chat to folder |
 
-### Profiles API (~14 routes)
+### Profiles API (~16 routes)
 
 | Route | Description |
 |-------|-------------|
 | `GET /api/profiles/{name}` | Get agent profile |
 | `PUT /api/profiles/{name}` | Update agent profile |
 | `POST /api/profiles` | Create new agent |
-| `POST /api/profiles/create` | Create agent (alternate) |
+| `POST /api/profiles/create` | New Agent wizard: name, one-line personality, values and boundaries write the profile, system prompt and Soul Script; an edited `system_prompt` or `soul_script` replaces the generated one. The Soul Script is reindexed after the response |
+| `POST /api/profiles/wizard-preview` | The system prompt and Soul Script skeleton the wizard would generate (writes nothing) |
+| `POST /api/profiles/codex-draft` | Codex Animus interviews the user one question at a time, then writes the `target` (`system_prompt` or `soul_script`) when `finish: true`; billed like chat |
 | `DELETE /api/profiles/{name}` | Soft-delete agent (moves to 30-day trash) |
 | `GET /api/profiles/trash` | List trashed agents |
 | `POST /api/profiles/trash/{id}/restore` | Restore agent from trash |

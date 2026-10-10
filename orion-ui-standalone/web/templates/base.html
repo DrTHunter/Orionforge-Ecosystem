@@ -763,7 +763,7 @@ select optgroup{color:${tm}!important}
     const PENDING_KEY = 'orion-pending-toast';
     // Writes that aren't "saves": chat/streaming, voice, auth, payments, tests, lookups,
     // and preferences the chat page remembers silently (last agent/model, pins).
-    const SKIP = /^\/api\/(chat\/(stream|run|stop|upload)|stt\/|tts\/|auth\/|stripe\/|credits\/|settings\/(chat-defaults|pinned-models))|\/(test|voices|models|load|reset-session|refresh-all-models|sync-openrouter-pricing|search|ack|compact)(\/|$)/;
+    const SKIP = /^\/api\/(chat\/(stream|run|stop|upload)|stt\/|tts\/|auth\/|stripe\/|credits\/|settings\/(chat-defaults|pinned-models)|profiles\/(codex-draft|wizard-preview))|\/(test|voices|models|load|reset-session|refresh-all-models|sync-openrouter-pricing|search|ack|compact)(\/|$)/;
     const FEEDBACK_EL = /toast|save-result|notif|snackbar/i;
     const FEEDBACK_TXT = /\b(saved|created|deleted|updated|applied|removed|added|renamed|restored|moved)\b/i;
     let lastAction = 0, lastFeedback = 0, box = null, hideTimer = null;

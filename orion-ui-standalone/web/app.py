@@ -1413,8 +1413,20 @@ def _load_soul_script(name: str, user_id: str | None = None) -> str:
     path = _DIRECTIVES_DIR / f"{name}.md"
     return path.read_text(encoding="utf-8") if path.exists() else ""
 
-def _save_soul_script(name: str, text: str, user_id: str | None = None):
-    """Save the soul script (directive) text for an agent."""
+def _reindex_soul_scripts():
+    """Re-index soul scripts into NotesFAISS so they are searchable at chat time."""
+    try:
+        _rebuild_notes_faiss()
+        from src.storage.note_collector import invalidate_notes_faiss
+        invalidate_notes_faiss()
+    except Exception as exc:
+        log.warning("[soul_script] FAISS reindex after soul script save failed: %s", exc)
+
+def _save_soul_script(name: str, text: str, user_id: str | None = None, reindex: bool = True):
+    """Save the soul script (directive) text for an agent.
+
+    ``reindex=False`` only writes the file; the caller schedules the reindex.
+    """
     uid = user_id or _current_user_id.get("__local__")
     if uid and uid != "__local__":
         dest_dir = user_directives_dir(uid)
@@ -1428,13 +1440,8 @@ def _save_soul_script(name: str, text: str, user_id: str | None = None):
         return
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest.write_text(text, encoding="utf-8")
-    # Re-index soul scripts into NotesFAISS so they are searchable at chat time
-    try:
-        _rebuild_notes_faiss()
-        from src.storage.note_collector import invalidate_notes_faiss
-        invalidate_notes_faiss()
-    except Exception as exc:
-        log.warning("[soul_script] FAISS reindex after soul script save failed: %s", exc)
+    if reindex:
+        _reindex_soul_scripts()
 
 def _get_agent_config(agent: str, user_id: str | None = None) -> dict:
     return _load_settings(user_id=user_id).get("agent_configs", {}).get(agent, {})
@@ -5776,24 +5783,127 @@ async def api_profile_avatar(name: str, request: Request):
     _save_settings(settings, user_id=uid)
     return {"ok": True, "image": entry.get("image", "")}
 
+_AGENT_NAME_RE = re.compile(r"^[a-z0-9_]{1,40}$")
+
+
+def _wizard_list(value) -> list[str]:
+    """Values/boundaries arrive as a list or a newline-separated string."""
+    if isinstance(value, str):
+        value = value.splitlines()
+    if not isinstance(value, list):
+        return []
+    items = (str(v).strip().lstrip("-•* ").strip() for v in value)
+    return [v[:200] for v in items if v][:12]
+
+
+def _agent_display_name(name: str) -> str:
+    return " ".join(w.capitalize() for w in name.split("_") if w)
+
+
+def _wizard_system_prompt(display: str, personality: str, values: list[str], boundaries: list[str]) -> str:
+    """Base system prompt generated from the New Agent wizard fields."""
+    lines = [f"You are {display}."]
+    if personality:
+        lines.append(personality.rstrip(".") + ".")
+    lines += ["", "You always speak in first person and stay in character."]
+    if values:
+        lines += ["", "What you care about:"] + [f"- {v}" for v in values]
+    if boundaries:
+        lines += ["", "What you won't do:"] + [f"- {b}" for b in boundaries]
+    return "\n".join(lines) + "\n"
+
+
+def _wizard_soul_script(display: str, personality: str, values: list[str], boundaries: list[str]) -> str:
+    """Soul Script skeleton. Each ### section is retrieved from FAISS on its own."""
+    todo = "_(Fill this in, or use “Draft with Codex Animus”.)_"
+    origin = f"I am {display}. {personality}".strip()
+    core = "\n".join(f"- {v}" for v in values) or todo
+    limits = "\n".join(f"- {b}" for b in boundaries) or todo
+    return (
+        f"# Soul Script: {display}\n\n"
+        f"### Origin\n{origin}\n{todo}\n\n"
+        f"### Core Truths\n{core}\n\n"
+        f"### Voice\n{todo}\n\n"
+        f"### Relationships\n{todo}\n\n"
+        f"### Behavioral Modes\n{todo}\n\n"
+        f"### Boundaries\n{limits}\n"
+    )
+
+
+def _agent_slug(raw) -> str:
+    return str(raw or "").strip().lower().replace(" ", "_").replace("-", "_")
+
+
+_soul_reindex_tasks: set = set()
+
+
+def _reindex_soul_scripts_later():
+    """Reindex after the response: a full NotesFAISS rebuild can take a while."""
+    task = asyncio.get_running_loop().create_task(asyncio.to_thread(_reindex_soul_scripts))
+    _soul_reindex_tasks.add(task)  # keep a reference until it finishes
+    task.add_done_callback(_soul_reindex_tasks.discard)
+
+
+@app.post("/api/profiles/wizard-preview")
+async def api_profile_wizard_preview(request: Request):
+    """The system prompt and Soul Script skeleton the wizard would write."""
+    body = await request.json()
+    display = _agent_display_name(_agent_slug(body.get("name"))) or "New Agent"
+    personality = str(body.get("personality", "")).strip()[:300]
+    values = _wizard_list(body.get("values"))
+    boundaries = _wizard_list(body.get("boundaries"))
+    return {"system_prompt": _wizard_system_prompt(display, personality, values, boundaries),
+            "soul_script": _wizard_soul_script(display, personality, values, boundaries)}
+
+
 @app.post("/api/profiles/create")
 async def api_profile_create_v2(request: Request):
-    """Create a new agent (v2 — supports description and model)."""
+    """Create a new agent (v2 — the New Agent wizard).
+
+    From a name, a one-line personality, and optional values and boundaries it
+    writes the profile, the system prompt and a Soul Script skeleton. A
+    ``system_prompt`` or ``soul_script`` the user edited (or Codex Animus
+    drafted) replaces the generated one.
+    """
     body = await request.json()
     uid = _get_user_id(request)
-    name = body.get("name", "").strip().lower().replace(" ", "_")
+    name = _agent_slug(body.get("name"))
     if not name:
         return JSONResponse({"error": "Name required"}, 400)
+    if not _AGENT_NAME_RE.match(name):
+        return JSONResponse({"error": "Use letters, numbers, spaces or underscores (max 40)"}, 400)
     if (_PROFILES_DIR / f"{name}.yaml").exists():
         return JSONResponse({"error": "Already exists"}, 400)
     if uid and uid != "__local__":
         if (user_profiles_dir(uid) / f"{name}.yaml").exists():
             return JSONResponse({"error": "Already exists"}, 400)
     model = body.get("model", "")
-    desc = body.get("description", "")
-    _save_profile(name, {"name": name, "model": model, "temperature": 0.7,
-                         "system_prompt": f"{name}.system.md"}, user_id=uid)
-    _save_system_prompt(name, "", user_id=uid)  # blank: the editor shows a placeholder
+    personality = str(body.get("personality", "")).strip()[:300]
+    desc = str(body.get("description", "")).strip()[:150] or personality[:150]
+    values = _wizard_list(body.get("values"))
+    boundaries = _wizard_list(body.get("boundaries"))
+    prompt = str(body.get("system_prompt", "")).strip()
+    soul = str(body.get("soul_script", "")).strip()
+    display = _agent_display_name(name)
+    profile = {"name": name, "model": model, "temperature": 0.7,
+               "system_prompt": f"{name}.system.md"}
+    if desc:
+        profile["description"] = desc
+    profile["memory"] = {"enabled": True, "scopes": ["shared", name],
+                         "max_items": 20, "similarity_threshold": 0.85}
+    profile["directives"] = {"enabled": True, "scopes": ["shared", name], "max_sections": 5}
+    _save_profile(name, profile, user_id=uid)
+    wizard = bool(personality or values or boundaries)
+    if prompt:
+        prompt += "\n"
+    elif wizard:
+        prompt = _wizard_system_prompt(display, personality, values, boundaries)
+    # Name only: the prompt stays blank so the editor shows its placeholder.
+    _save_system_prompt(name, prompt, user_id=uid)
+    if soul or wizard:
+        text = soul + "\n" if soul else _wizard_soul_script(display, personality, values, boundaries)
+        _save_soul_script(name, text, uid, reindex=False)
+        _reindex_soul_scripts_later()
     if desc or model:
         cfg = _get_agent_config(name, user_id=uid)
         if desc:
@@ -5802,6 +5912,163 @@ async def api_profile_create_v2(request: Request):
             cfg["model"] = model
         _save_agent_config(name, cfg, user_id=uid)
     return {"ok": True, "name": name}
+
+
+_CODEX_INTERVIEW = """You are interviewing the user to design a new AI agent called {display}.
+What they have so far:
+- Personality: {personality}
+- Values: {values}
+- Boundaries: {boundaries}
+
+You are working on {target_name} right now.{focus}
+Ask ONE short, specific question at a time to learn what you still need. Don't
+ask about what you already know. Keep your own voice as Codex Animus, in 1-3
+sentences. Reply with only the question."""
+
+_CODEX_TARGETS = {
+    "system_prompt": {
+        "name": "the system prompt",
+        "focus": (" The system prompt is the agent's always-on base instruction: role,"
+                  " personality, tone, how they talk, what they help with and what they won't do."),
+        "write": """Now write the system prompt for {display} from everything above.
+Address the agent in second person ("You are {display}..."), 120-350 words of
+plain prose, covering role, personality, tone, how they talk, what they help
+with, and what they won't do. Keep lore and long backstory out: that belongs in
+the Soul Script.
+Reply with only the system prompt: no preamble, no headings, no code fences.""",
+    },
+    "soul_script": {
+        "name": "the Soul Script",
+        "focus": (" The Soul Script is the deep identity layer: origin and backstory, core"
+                  " truths, voice (speech patterns, example lines), how they relate to the user,"
+                  " behavioral modes (playful, serious, challenged, someone hurting) and boundaries."),
+        "write": """Now write the Soul Script for {display} from everything above.
+Write it in {display}'s own first-person voice, as Markdown. Start with
+"# Soul Script: {display}", then these ### sections, 4-12 lines each:
+### Origin, ### Core Truths, ### Voice, ### Relationships, ### Behavioral Modes, ### Boundaries.
+Add other ### sections if the interview calls for them. Each section must make
+sense on its own, because each one is retrieved separately.
+Reply with only the Soul Script: no preamble and no code fences.""",
+    },
+}
+
+
+async def _billed_completion(request: Request, conn: dict, model: str, messages: list[dict],
+                             agent: str, label: str, temperature: float = 0.7):
+    """One chat completion, metered and charged the way /api/chat/send does it.
+
+    Returns ``(text, None)``, or ``(None, JSONResponse)`` on failure.
+    """
+    user = getattr(request.state, "user", None)
+    if conn.get("platform_hosted") and user and get_user_credits(user["id"]) <= 0:
+        return None, JSONResponse({"error": "Insufficient credits. Purchase more in the Store.",
+                                   "redirect": "/store"}, 402)
+    if conn.get("provider") == "openrouter" and model and "/" not in model:
+        model = f"openai/{model}"
+    url = conn["url"].rstrip("/")
+    if not url.endswith("/chat/completions"):
+        url += "/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if conn.get("api_key"):
+        headers["Authorization"] = f"Bearer {conn['api_key']}"
+    try:
+        async with httpx.AsyncClient(timeout=120) as client:
+            resp = await client.post(url, json={"model": model, "messages": messages,
+                                                "temperature": temperature}, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+    except httpx.HTTPStatusError as exc:
+        return None, JSONResponse({"error": f"API {exc.response.status_code}: {exc.response.text[:200]}"}, 502)
+    except Exception as exc:
+        return None, JSONResponse({"error": f"Request failed: {exc}"}, 502)
+    usage = data.get("usage") or {}
+    cost_usd = 0.0
+    try:
+        from src.observability.metering import meter_from_raw_usage, log_cost_event
+        metering = meter_from_raw_usage(usage, provider=conn.get("provider", "openai"), model=model)
+        cost_usd = metering.cost.to_dict().get("total_cost", 0)
+        log_cost_event(metering, agent=agent, chat_id=label,
+                       source="platform" if conn.get("platform_hosted") else "user")
+    except Exception as exc:
+        log.warning("[metering] cost computation failed: %s", exc)
+    if conn.get("platform_hosted") and user and usage.get("total_tokens", 0) > 0:
+        try:
+            credit_cost = estimate_llm_credit_cost_safe(cost_usd, usage.get("total_tokens", 0))
+            # Never charge past zero; the pre-flight check blocks the next call.
+            credit_cost = min(credit_cost, get_user_credits(user["id"]))
+            if credit_cost > 0:
+                deduct_user_credits(user["id"], credit_cost,
+                                    f"llm:{model}:{usage.get('total_tokens', 0)}tok:{label}")
+        except Exception as exc:
+            log.warning("[credits] LLM credit deduction failed: %s", exc)
+    choice = (data.get("choices") or [{}])[0]
+    return ((choice.get("message") or {}).get("content") or "").strip(), None
+
+
+@app.post("/api/profiles/codex-draft")
+async def api_profile_codex_draft(request: Request):
+    """Codex Animus interviews the user, then writes the new agent's system prompt
+    or Soul Script.
+
+    Body: ``target`` (``"system_prompt"`` or ``"soul_script"``), ``name``,
+    ``personality``, ``values``, ``boundaries``, ``current`` (the draft so far),
+    ``transcript`` (``[{role: "codex" | "user", text}]``) and ``finish``.
+    Returns the next ``question``, or ``{target: text}`` when ``finish`` is true.
+    """
+    body = await request.json()
+    uid = _get_user_id(request)
+    codex = "codex_animus"
+    if not _can_access_agent(codex, uid):
+        return JSONResponse({"error": "Codex Animus isn't available"}, 403)
+    target = body.get("target") or "soul_script"
+    if target not in _CODEX_TARGETS:
+        return JSONResponse({"error": "Unknown target"}, 400)
+    conn = _resolve_connection(None, codex)
+    if not conn:
+        return JSONResponse({"error": "No API connection available. Add one in Settings."}, 400)
+    spec = _CODEX_TARGETS[target]
+    display = _agent_display_name(_agent_slug(body.get("name")))[:60] or "the new agent"
+    fields = {
+        "display": display,
+        "personality": str(body.get("personality", "")).strip()[:300] or "(not given)",
+        "values": "; ".join(_wizard_list(body.get("values"))) or "(not given)",
+        "boundaries": "; ".join(_wizard_list(body.get("boundaries"))) or "(not given)",
+        "target_name": spec["name"],
+        "focus": spec["focus"],
+    }
+    persona = _load_system_prompt(codex, user_id=uid)
+    codex_soul = _load_soul_script(codex, user_id=uid)[:6000]
+    system = f"{persona}\n\n{codex_soul}\n\n{_CODEX_INTERVIEW.format(**fields)}"
+    current = str(body.get("current", "")).strip()[:8000]
+    if current:
+        system += f"\n\nThe user's current draft of {spec['name']}:\n---\n{current}\n---"
+    messages = [{"role": "system", "content": system}]
+    transcript = body.get("transcript")
+    for turn in (transcript if isinstance(transcript, list) else [])[-24:]:
+        if not isinstance(turn, dict):
+            continue
+        text = str(turn.get("text", "")).strip()[:2000]
+        if text:
+            messages.append({"role": "assistant" if turn.get("role") == "codex" else "user",
+                             "content": text})
+    finish = bool(body.get("finish"))
+    if finish:
+        messages.append({"role": "user", "content": spec["write"].format(**fields)})
+    elif messages[-1]["role"] != "user":
+        messages.append({"role": "user",
+                         "content": f"Let's work on {spec['name']} for {display}. Ask your next question."})
+    profile = _load_profile(codex, user_id=uid) or {}
+    model = (_get_agent_config(codex, user_id=uid).get("model") or profile.get("model", "")
+             or (conn["models"][0] if conn.get("models") else "gpt-4o-mini"))
+    text, err = await _billed_completion(request, conn, model, messages, codex,
+                                         f"{target}_draft", temperature=0.8 if finish else 0.7)
+    if err:
+        return err
+    if not text:
+        return JSONResponse({"error": "Codex Animus returned nothing. Try again."}, 502)
+    if finish:
+        return {target: re.sub(r"^```(?:markdown|md|text)?\s*|\s*```$", "", text).strip()}
+    return {"question": text}
 
 @app.put("/api/profiles/{name}/knowledge")
 async def api_profile_knowledge(name: str, request: Request):

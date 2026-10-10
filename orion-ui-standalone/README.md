@@ -67,7 +67,7 @@ orion-ui-standalone/
 | **K-OS (sterile edition)** | `profiles/k_os.yaml`, `prompts/k_os.system.md`, `directives/k_os.md`. Copy these to make a new agent. |
 | Example characters | Aristotle, Codex Animus, Dal'Varr, Janus, Kaelen, KAIROS, Kazara, Lux Umbra, M.A.R.I.S.-12, Marcus Aurelius, Obsidian, Seraphine |
 
-A new agent needs a profile, a system prompt and a directive file that share an id. You can also create agents from the **Profiles** page.
+A new agent needs a profile, a system prompt and a directive file that share an id. The **Profiles** page's **New Agent** wizard writes all three from a name, a one-line personality, and a few values and boundaries, with a step each for the prompt and the Soul Script (edit the generated version, or have Codex Animus interview you and draft it).
 
 ## Pages
 

@@ -582,6 +582,28 @@
     display: flex; flex-direction: column;
   }
   .modal-title { font-size: 1rem; font-weight: 700; color: #fff; margin-bottom: 1rem; }
+
+  /* ── New Agent wizard ── */
+  .wizard-box { width: 34rem; max-height: 88vh; }
+  .wizard-body { overflow-y: auto; min-height: 0; }
+  .wizard-step { display: none; }
+  .wizard-step.active { display: block; }
+  .wizard-steps { display: flex; gap: 0.625rem; font-size: 0.6875rem; font-weight: 600; color: #3f3f46; }
+  .wizard-steps .active { color: #a5b4fc; }
+  .wizard-steps .done { color: #71717a; }
+  .wizard-list { resize: vertical; font-family: inherit; }
+  .wizard-codex-btn { display: inline-flex; align-items: center; gap: 0.5rem; color: #e4e4e7; }
+  .wizard-codex-btn img { width: 1.5rem; height: 1.5rem; border-radius: 50%; object-fit: cover; }
+  .wizard-chat {
+    height: 15rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;
+    background: #13131a; border: 1px solid #2a2a3a; border-radius: 0.5rem; padding: 0.75rem;
+  }
+  .wizard-msg { max-width: 85%; padding: 0.5rem 0.75rem; border-radius: 0.625rem;
+    font-size: 0.8125rem; line-height: 1.45; white-space: pre-wrap; }
+  .wizard-msg.codex { align-self: flex-start; background: rgba(99,102,241,0.12); color: #e0e7ff; }
+  .wizard-msg.user { align-self: flex-end; background: #2a2a3a; color: #e4e4e7; }
+  .wizard-msg.pending { opacity: 0.6; font-style: italic; }
+  .wizard-error { color: #fca5a5; font-size: 0.75rem; margin-top: 0.5rem; min-height: 1rem; }
   .modal-note-list {
     flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;
     margin-bottom: 1rem;
@@ -1215,26 +1237,97 @@
 
 <!-- ═══ NEW AGENT MODAL ═══ -->
 <div class="modal-overlay" id="new-agent-modal">
-  <div class="modal-box">
-    <div class="modal-title">Create New Agent</div>
-    <div style="margin-bottom:1rem;">
-      <label class="field-label">Agent Name</label>
-      <input type="text" class="text-input" id="new-agent-name" placeholder="e.g. atlas, nova, sage">
-      <div class="field-hint">Lowercase, no spaces — this becomes the profile filename.</div>
+  <div class="modal-box wizard-box">
+    <div class="modal-title" style="display:flex; justify-content:space-between; align-items:baseline;">
+      <span>Create New Agent</span>
+      <span class="wizard-steps" id="wizard-steps">
+        <span data-step="1">1 Identity</span><span data-step="2">2 Values</span><span data-step="3">3 Prompt</span><span data-step="4">4 Soul Script</span>
+      </span>
     </div>
-    <div style="margin-bottom:1rem;">
-      <label class="field-label">Base Model</label>
-      <select class="select-input" id="new-agent-model">
-        <option value="">Select a base model</option>
-      </select>
+    <div class="wizard-body">
+      <!-- Step 1: who they are -->
+      <div class="wizard-step" data-step="1">
+        <div style="margin-bottom:1rem;">
+          <label class="field-label">Agent Name</label>
+          <input type="text" class="text-input" id="new-agent-name" placeholder="e.g. Atlas, Nova, Sage" maxlength="40">
+          <div class="field-hint">Becomes the file name: <code id="new-agent-slug">—</code></div>
+        </div>
+        <div style="margin-bottom:1rem;">
+          <label class="field-label">Personality, in one line</label>
+          <input type="text" class="text-input" id="new-agent-personality" maxlength="300"
+                 placeholder="e.g. A warm but blunt career coach who never sugarcoats">
+        </div>
+        <div style="margin-bottom:1rem;">
+          <label class="field-label">Base Model</label>
+          <select class="select-input" id="new-agent-model">
+            <option value="">Select a base model</option>
+          </select>
+        </div>
+      </div>
+      <!-- Step 2: values and boundaries -->
+      <div class="wizard-step" data-step="2">
+        <div style="margin-bottom:1rem;">
+          <label class="field-label">Values</label>
+          <textarea class="text-input wizard-list" id="new-agent-values" rows="4"
+                    placeholder="One per line, e.g.&#10;Honesty over comfort&#10;Small steps beat big plans"></textarea>
+          <div class="field-hint">What they care about. Becomes the Soul Script's Core Truths.</div>
+        </div>
+        <div style="margin-bottom:1rem;">
+          <label class="field-label">Boundaries</label>
+          <textarea class="text-input wizard-list" id="new-agent-boundaries" rows="4"
+                    placeholder="One per line, e.g.&#10;Won't give medical or legal advice&#10;Won't do the user's work for them"></textarea>
+          <div class="field-hint">What they won't do. Both lists are optional.</div>
+        </div>
+      </div>
+      <!-- Step 3: system prompt -->
+      <div class="wizard-step" data-step="3">
+        <label class="field-label">System Prompt</label>
+        <textarea class="textarea-prompt wizard-editor" id="wizard-prompt" style="min-height:12rem;"></textarea>
+        <div class="field-hint">
+          The always-on base instruction: role, personality, tone, what they help with and what they won't do.
+          Written from steps 1 and 2. Edit it here, or have Codex Animus draft it.
+        </div>
+      </div>
+      <!-- Step 4: Soul Script -->
+      <div class="wizard-step" data-step="4">
+        <label class="field-label">Soul Script</label>
+        <textarea class="textarea-prompt soul-script wizard-editor" id="wizard-soul" style="min-height:12rem;"></textarea>
+        <div class="field-hint">
+          The deep identity layer. Each <code>###</code> section is retrieved on its own during chat.
+          Fill in the skeleton, or have Codex Animus interview you and write it.
+        </div>
+      </div>
+      <!-- Codex Animus, shared by steps 3 and 4 -->
+      <div id="wizard-codex" style="display:none; margin-top:0.75rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center;">
+          <button class="btn btn-secondary wizard-codex-btn" id="wizard-codex-start" onclick="startCodexDraft()">
+            <img src="/uploads/avatar_codex_animus_forge2026.jpg" alt="" onerror="this.remove()">
+            <span id="wizard-codex-label">Draft with Codex Animus</span>
+          </button>
+          <a href="#" class="field-hint" id="wizard-reset" onclick="event.preventDefault(); resetWizardEditor();">Reset to the generated version</a>
+        </div>
+        <div id="wizard-interview" style="display:none; margin-top:0.75rem;">
+          <div class="wizard-chat" id="wizard-chat"></div>
+          <div style="display:flex; gap:0.5rem; margin-top:0.5rem;">
+            <input type="text" class="text-input" id="wizard-answer" placeholder="Your answer…"
+                   onkeydown="if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); sendCodexAnswer(); }">
+            <button class="btn btn-primary" id="wizard-answer-btn" onclick="sendCodexAnswer()">Send</button>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:0.5rem;">
+            <span class="field-hint" id="wizard-interview-hint">Answer a few questions, then have Codex write it.</span>
+            <button class="btn btn-secondary" id="wizard-write-btn" onclick="finishCodexDraft()">Write it</button>
+          </div>
+        </div>
+      </div>
+      <div class="wizard-error" id="wizard-error"></div>
     </div>
-    <div style="margin-bottom:1rem;">
-      <label class="field-label">Description</label>
-      <input type="text" class="text-input" id="new-agent-desc" placeholder="What does this agent do?" maxlength="150">
-    </div>
-    <div style="display:flex; justify-content:flex-end; gap:0.75rem; margin-top:1rem;">
+    <div style="display:flex; justify-content:space-between; gap:0.75rem; margin-top:1rem;">
       <button class="btn btn-secondary" onclick="closeNewAgentModal()">Cancel</button>
-      <button class="btn btn-primary" onclick="createNewAgent()">Create Agent</button>
+      <span style="display:flex; gap:0.75rem;">
+        <button class="btn btn-secondary" id="wizard-back" onclick="wizardGo(-1)">Back</button>
+        <button class="btn btn-primary" id="wizard-next" onclick="wizardGo(1)">Next</button>
+        <button class="btn btn-primary" id="wizard-create" onclick="createNewAgent()">Create Agent</button>
+      </span>
     </div>
   </div>
 </div>
@@ -2155,28 +2248,242 @@
   }
 
   // ── New agent ──
+  // A four-step wizard: identity → values/boundaries → system prompt → Soul Script.
+  // Steps 3 and 4 start from what steps 1–2 generate; either can be edited by
+  // hand or drafted by Codex Animus through a short interview.
+  const WIZARD_LAST = 4;
+  const WIZARD_TARGETS = {
+    3: {target: 'system_prompt', editor: 'wizard-prompt', label: 'system prompt'},
+    4: {target: 'soul_script', editor: 'wizard-soul', label: 'Soul Script'},
+  };
+  let _wizardStep = 1;
+  let _codexTranscript = [];
+  let _codexBusy = false;
+  let _wizardPreview = null;
+
+  function _agentSlug(raw) {
+    return raw.trim().toLowerCase().replace(/[\s-]+/g, '_');
+  }
+  function _wizardFields() {
+    const lines = id => document.getElementById(id).value.split('\n').map(s => s.trim()).filter(Boolean);
+    return {
+      name: _agentSlug(document.getElementById('new-agent-name').value),
+      personality: document.getElementById('new-agent-personality').value.trim(),
+      model: document.getElementById('new-agent-model').value.trim(),
+      values: lines('new-agent-values'),
+      boundaries: lines('new-agent-boundaries'),
+    };
+  }
+  function _wizardError(msg) {
+    document.getElementById('wizard-error').textContent = msg || '';
+  }
+
+  // Fill an untouched editor with the generated version (refreshed when steps 1–2 change).
+  async function _wizardFillEditors() {
+    try {
+      const resp = await fetch('/api/profiles/wizard-preview', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(_wizardFields()),
+      });
+      if (!resp.ok) return;
+      _wizardPreview = await resp.json();
+    } catch (e) { return; }
+    for (const t of Object.values(WIZARD_TARGETS)) {
+      const ed = document.getElementById(t.editor);
+      if (!ed.dataset.edited) ed.value = _wizardPreview[t.target] || '';
+    }
+  }
+  function resetWizardEditor() {
+    const t = WIZARD_TARGETS[_wizardStep];
+    if (!t || !_wizardPreview) return;
+    const ed = document.getElementById(t.editor);
+    ed.value = _wizardPreview[t.target] || '';
+    delete ed.dataset.edited;
+  }
+
+  function _wizardShow(step) {
+    _wizardStep = step;
+    document.querySelectorAll('#new-agent-modal .wizard-step').forEach(el =>
+      el.classList.toggle('active', +el.dataset.step === step));
+    document.querySelectorAll('#wizard-steps span').forEach(el => {
+      el.classList.toggle('active', +el.dataset.step === step);
+      el.classList.toggle('done', +el.dataset.step < step);
+    });
+    document.getElementById('wizard-back').style.display = step > 1 ? '' : 'none';
+    document.getElementById('wizard-next').style.display = step < WIZARD_LAST ? '' : 'none';
+    document.getElementById('wizard-create').style.display = step === WIZARD_LAST ? '' : 'none';
+    const t = WIZARD_TARGETS[step];
+    document.getElementById('wizard-codex').style.display = t ? '' : 'none';
+    if (t) {
+      document.getElementById('wizard-codex-label').textContent = 'Draft the ' + t.label + ' with Codex Animus';
+      document.getElementById('wizard-write-btn').textContent = 'Write the ' + t.label;
+    }
+    _wizardError('');
+    const focus = {1: 'new-agent-name', 2: 'new-agent-values'}[step];
+    if (focus) document.getElementById(focus).focus();
+  }
+  async function wizardGo(delta) {
+    if (_codexBusy) return;
+    if (delta > 0 && _wizardStep === 1) {
+      const f = _wizardFields();
+      if (!f.name) return _wizardError('Give your agent a name.');
+      if (!/^[a-z0-9_]{1,40}$/.test(f.name)) return _wizardError('Use letters, numbers, spaces or underscores.');
+      if (!f.personality) return _wizardError('Describe their personality in one line.');
+    }
+    const next = Math.min(WIZARD_LAST, Math.max(1, _wizardStep + delta));
+    if (WIZARD_TARGETS[next] && !WIZARD_TARGETS[_wizardStep]) await _wizardFillEditors();
+    _wizardShow(next);
+  }
+
   function openNewAgentModal() {
+    ['new-agent-name', 'new-agent-personality', 'new-agent-values', 'new-agent-boundaries',
+     'wizard-prompt', 'wizard-soul'].forEach(id => {
+      const el = document.getElementById(id);
+      el.value = '';
+      delete el.dataset.edited;
+    });
+    document.getElementById('new-agent-slug').textContent = '—';
+    _codexTranscript = [];
+    _wizardPreview = null;
+    document.getElementById('wizard-chat').innerHTML = '';
+    document.getElementById('wizard-interview').style.display = 'none';
+    document.getElementById('wizard-codex-start').style.display = '';
+    const btn = document.getElementById('wizard-create');
+    btn.disabled = false;
+    btn.textContent = 'Create Agent';
     document.getElementById('new-agent-modal').classList.add('open');
-    document.getElementById('new-agent-name').focus();
+    _wizardShow(1);
   }
   function closeNewAgentModal() {
     document.getElementById('new-agent-modal').classList.remove('open');
   }
-  async function createNewAgent() {
-    const name = document.getElementById('new-agent-name').value.trim().toLowerCase().replace(/\s+/g, '_');
-    const model = document.getElementById('new-agent-model').value.trim() || '';
-    const desc = document.getElementById('new-agent-desc')?.value.trim() || '';
-    if (!name) return;
-    const resp = await fetch('/api/profiles/create', {
-      method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, model, description: desc}),
+  document.getElementById('new-agent-name').addEventListener('input', e => {
+    document.getElementById('new-agent-slug').textContent = _agentSlug(e.target.value) || '—';
+  });
+  document.getElementById('new-agent-personality').addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); wizardGo(1); }
+  });
+  document.querySelectorAll('#new-agent-modal .wizard-editor').forEach(ed =>
+    ed.addEventListener('input', () => { ed.dataset.edited = '1'; }));
+
+  // ── Draft with Codex Animus ──
+  // One transcript for both steps, so what Codex learns writing the prompt
+  // carries into the Soul Script.
+  function _codexBubble(role, text, pending) {
+    const chat = document.getElementById('wizard-chat');
+    const el = document.createElement('div');
+    el.className = 'wizard-msg ' + role + (pending ? ' pending' : '');
+    el.textContent = text;
+    chat.appendChild(el);
+    chat.scrollTop = chat.scrollHeight;
+    return el;
+  }
+  function _codexSetBusy(busy) {
+    _codexBusy = busy;
+    ['wizard-answer', 'wizard-answer-btn', 'wizard-write-btn', 'wizard-create', 'wizard-next', 'wizard-back']
+      .forEach(id => { document.getElementById(id).disabled = busy; });
+  }
+  async function _codexRequest(finish) {
+    const t = WIZARD_TARGETS[_wizardStep];
+    const resp = await fetch('/api/profiles/codex-draft', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        ..._wizardFields(), target: t.target, finish, transcript: _codexTranscript,
+        current: document.getElementById(t.editor).value,
+      }),
     });
-    if (resp.ok) {
-      location.reload();
-    } else {
-      const err = await resp.json();
-      alert(err.error || 'Failed to create agent');
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(data.error || 'Codex Animus is unavailable right now.');
+    return data;
+  }
+  async function _codexAsk() {
+    _codexSetBusy(true);
+    const pending = _codexBubble('codex', 'Codex Animus is thinking…', true);
+    try {
+      const data = await _codexRequest(false);
+      _codexTranscript.push({role: 'codex', text: data.question});
+      _codexBubble('codex', data.question);
+      if (_codexTranscript.filter(t => t.role === 'user').length >= 3) {
+        document.getElementById('wizard-interview-hint').textContent =
+          'That may be enough. Keep going, or have Codex write it.';
+      }
+    } catch (err) {
+      _wizardError(err.message);
+    } finally {
+      pending.remove();
+      _codexSetBusy(false);
+      document.getElementById('wizard-answer').focus();
     }
+  }
+  function startCodexDraft() {
+    document.getElementById('wizard-codex-start').style.display = 'none';
+    document.getElementById('wizard-interview').style.display = '';
+    document.getElementById('wizard-interview-hint').textContent =
+      'Answer a few questions, then have Codex write it.';
+    _wizardError('');
+    _codexAsk();
+  }
+  function sendCodexAnswer() {
+    const input = document.getElementById('wizard-answer');
+    const text = input.value.trim();
+    if (!text || _codexBusy) return;
+    input.value = '';
+    _codexTranscript.push({role: 'user', text});
+    _codexBubble('user', text);
+    _codexAsk();
+  }
+  async function finishCodexDraft() {
+    if (_codexBusy) return;
+    const t = WIZARD_TARGETS[_wizardStep];
+    _codexSetBusy(true);
+    _wizardError('');
+    const pending = _codexBubble('codex', 'Writing the ' + t.label + '…', true);
+    try {
+      const data = await _codexRequest(true);
+      const ed = document.getElementById(t.editor);
+      ed.value = data[t.target];
+      ed.dataset.edited = '1';
+      _codexBubble('codex', 'Done. The ' + t.label + ' is in the editor above; change anything you like.');
+      document.getElementById('wizard-interview').style.display = 'none';
+      document.getElementById('wizard-codex-start').style.display = '';
+    } catch (err) {
+      _wizardError(err.message);
+    } finally {
+      pending.remove();
+      _codexSetBusy(false);
+    }
+  }
+
+  async function createNewAgent() {
+    if (_codexBusy) return;
+    const f = _wizardFields();
+    if (!f.name) return _wizardShow(1);
+    const btn = document.getElementById('wizard-create');
+    btn.disabled = true;
+    btn.textContent = 'Creating…';
+    _wizardError('');
+    let resp, err = {};
+    try {
+      resp = await fetch('/api/profiles/create', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          ...f,
+          system_prompt: document.getElementById('wizard-prompt').value.trim(),
+          soul_script: document.getElementById('wizard-soul').value.trim(),
+        }),
+      });
+      if (!resp.ok) err = await resp.json().catch(() => ({}));
+    } catch (e) {
+      err = {error: 'Network error: ' + e.message};
+    }
+    if (resp && resp.ok) {
+      closeNewAgentModal();
+      location.reload();
+      return;
+    }
+    btn.disabled = false;
+    btn.textContent = 'Create Agent';
+    _wizardError(err.error || 'Failed to create agent');
   }
 
   // ── Delete Agent ──

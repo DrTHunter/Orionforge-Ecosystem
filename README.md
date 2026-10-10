@@ -95,6 +95,10 @@ python -m uvicorn web.app:app --host 127.0.0.1 --port 8989
 
 ### Make your own
 
+The easy way: **Profiles → + New Agent**. The wizard asks for a name, a one-line personality, and a few values and boundaries, then gives the system prompt and the Soul Script a step each. Both start from versions generated from your answers, so you can edit them, or click **Draft with Codex Animus** on either step to be interviewed and have Codex write it. Creating writes the profile, prompt and directive files for you.
+
+By hand:
+
 1. Copy `profiles/k_os.yaml`, `prompts/k_os.system.md` and `directives/k_os.md` (all under `orion-ui-standalone/`).
 2. Rename them to your agent's id, and edit the `name`, `system_prompt` and `scopes` fields in the profile.
 3. Write the Soul Script in the directive file — sections under `##`/`###` headings. Keep each section self-contained; retrieval pulls sections independently.

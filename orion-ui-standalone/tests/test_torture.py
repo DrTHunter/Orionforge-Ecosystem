@@ -5154,7 +5154,8 @@ def test_registry_get_tool_defs():
 # PROFILE CREATE V2 — newer endpoint
 # ═════════════════════════════════════════════
 def test_profile_create_v2():
-    """Test the v2 profile creation endpoint with description and model."""
+    """Test the v2 profile creation endpoint and the New Agent wizard fields."""
+    import yaml
     print("\n=== TORTURE: Profile Create V2 ===")
     from pathlib import Path
 
@@ -5219,13 +5220,124 @@ def test_profile_create_v2():
                     r3 = await client.post("/api/profiles/create", json={"name": ""})
                     check("v2 empty name → 400", r3.status_code == 400)
 
+                    # Unsafe name → 400, and nothing written outside the dirs
+                    r4 = await client.post("/api/profiles/create", json={"name": "../evil"})
+                    check("v2 path-traversal name → 400", r4.status_code == 400)
+
+                    # Name only: no soul script, blank prompt (editor placeholder)
+                    check("v2 name-only prompt blank",
+                          (tmp_prompts / "nova_agent.system.md").read_text(encoding="utf-8") == "")
+                    check("v2 name-only no soul script", not (tmp_directives / "nova_agent.md").exists())
+
+                    # Wizard: personality + values + boundaries → all three files
+                    r5 = await client.post("/api/profiles/create", json={
+                        "name": "Iron Sage",
+                        "personality": "A gruff mentor who teaches by asking questions",
+                        "values": ["Patience", "Honesty over comfort"],
+                        "boundaries": "- Won't give legal advice\n\n- Won't do your homework",
+                    })
+                    check("wizard create 200", r5.status_code == 200)
+                    prof = yaml.safe_load((tmp_profiles / "iron_sage.yaml").read_text(encoding="utf-8"))
+                    check("wizard profile description",
+                          prof.get("description") == "A gruff mentor who teaches by asking questions")
+                    check("wizard profile directive scopes",
+                          prof.get("directives", {}).get("scopes") == ["shared", "iron_sage"])
+                    prompt = (tmp_prompts / "iron_sage.system.md").read_text(encoding="utf-8")
+                    check("wizard prompt names agent", prompt.startswith("You are Iron Sage."))
+                    check("wizard prompt has values", "- Honesty over comfort" in prompt)
+                    check("wizard prompt has boundaries", "- Won't do your homework" in prompt)
+                    soul = (tmp_directives / "iron_sage.md").read_text(encoding="utf-8")
+                    check("wizard soul title", soul.startswith("# Soul Script: Iron Sage"))
+                    for sec in ("Origin", "Core Truths", "Voice", "Relationships",
+                                "Behavioral Modes", "Boundaries"):
+                        check(f"wizard soul has ### {sec}", f"### {sec}\n" in soul)
+                    check("wizard soul core truths from values", "### Core Truths\n- Patience" in soul)
+
+                    # A drafted soul script replaces the skeleton
+                    r6 = await client.post("/api/profiles/create", json={
+                        "name": "drafted",
+                        "personality": "Calm",
+                        "soul_script": "# Soul Script: Drafted\n\n### Origin\nI woke in the forge.",
+                    })
+                    check("wizard drafted create 200", r6.status_code == 200)
+                    check("wizard drafted soul kept",
+                          (tmp_directives / "drafted.md").read_text(encoding="utf-8")
+                          == "# Soul Script: Drafted\n\n### Origin\nI woke in the forge.\n")
+
+                    # A system prompt the user edited replaces the generated one
+                    r7 = await client.post("/api/profiles/create", json={
+                        "name": "edited", "personality": "Calm",
+                        "system_prompt": "You are Edited. Speak softly.",
+                    })
+                    check("wizard edited prompt 200", r7.status_code == 200)
+                    check("wizard edited prompt kept",
+                          (tmp_prompts / "edited.system.md").read_text(encoding="utf-8")
+                          == "You are Edited. Speak softly.\n")
+                    check("wizard edited prompt still gets skeleton",
+                          "### Voice" in (tmp_directives / "edited.md").read_text(encoding="utf-8"))
+
+                    # Preview: what steps 3 and 4 start from, without writing anything
+                    pv = await client.post("/api/profiles/wizard-preview", json={
+                        "name": "Preview Only", "personality": "Gruff mentor", "values": ["Patience"]})
+                    pvj = pv.json()
+                    check("wizard preview prompt", pvj.get("system_prompt", "").startswith("You are Preview Only."))
+                    check("wizard preview soul", "### Core Truths\n- Patience" in pvj.get("soul_script", ""))
+                    check("wizard preview writes nothing", not (tmp_profiles / "preview_only.yaml").exists())
+
+                    # Draft with Codex Animus: interview turns, then each target
+                    seen = []
+
+                    async def _fake_completion(request, conn, model, messages, agent, label, temperature=0.7):
+                        seen.append(messages)
+                        last = messages[-1]["content"]
+                        if "write the Soul Script" in last:
+                            return "```markdown\n# Soul Script: Iron Sage\n\n### Origin\nForged.\n```", None
+                        if "write the system prompt" in last:
+                            return "You are Iron Sage, a gruff mentor.", None
+                        return "Where did Iron Sage learn to teach?", None
+
+                    _orig_bc = _app._billed_completion
+                    _orig_rc = _app._resolve_connection
+                    _app._billed_completion = _fake_completion
+                    _app._resolve_connection = lambda cid, agent: {"id": "t", "url": "http://x", "models": ["m"]}
+                    try:
+                        base = {"name": "Iron Sage", "personality": "Gruff mentor", "values": ["Patience"]}
+                        q = await client.post("/api/profiles/codex-draft",
+                                              json={**base, "target": "system_prompt"})
+                        check("codex draft question", q.json().get("question") == "Where did Iron Sage learn to teach?")
+                        check("codex sees wizard fields", "Patience" in seen[-1][0]["content"])
+                        check("codex knows the target", "the system prompt" in seen[-1][0]["content"])
+                        dp = await client.post("/api/profiles/codex-draft", json={
+                            **base, "target": "system_prompt", "finish": True,
+                            "current": "You are Iron Sage.",
+                            "transcript": [{"role": "codex", "text": "Where?"},
+                                           {"role": "user", "text": "A monastery"}],
+                        })
+                        check("codex transcript forwarded",
+                              [m["role"] for m in seen[-1][1:3]] == ["assistant", "user"])
+                        check("codex sees current draft", "You are Iron Sage." in seen[-1][0]["content"])
+                        check("codex writes prompt",
+                              dp.json().get("system_prompt") == "You are Iron Sage, a gruff mentor.")
+                        ds = await client.post("/api/profiles/codex-draft", json={
+                            **base, "target": "soul_script", "finish": True})
+                        check("codex draft fences stripped",
+                              ds.json().get("soul_script") == "# Soul Script: Iron Sage\n\n### Origin\nForged.")
+                        bad = await client.post("/api/profiles/codex-draft", json={**base, "target": "x"})
+                        check("codex unknown target → 400", bad.status_code == 400)
+                    finally:
+                        _app._billed_completion = _orig_bc
+                        _app._resolve_connection = _orig_rc
+
             import web.app as _app_auth_6
             _orig_gac_6 = _app_auth_6.get_auth_config
+            _orig_rebuild_6 = _app_auth_6._rebuild_notes_faiss
             _app_auth_6.get_auth_config = lambda: {"auth_enabled": False}
+            _app_auth_6._rebuild_notes_faiss = lambda: None  # keep the real FAISS index untouched
             try:
                 asyncio.run(_run())
             finally:
                 _app_auth_6.get_auth_config = _orig_gac_6
+                _app_auth_6._rebuild_notes_faiss = _orig_rebuild_6
 
         except ImportError:
             check("httpx not available — skipped", True)
