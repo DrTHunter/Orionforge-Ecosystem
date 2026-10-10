@@ -5251,7 +5251,9 @@ def test_profile_create_v2():
                     for sec in ("Origin", "Core Truths", "Voice", "Relationships",
                                 "Behavioral Modes", "Boundaries"):
                         check(f"wizard soul has ### {sec}", f"### {sec}\n" in soul)
-                    check("wizard soul core truths from values", "### Core Truths\n- Patience" in soul)
+                    check("wizard soul core truths from values", "### Core Truths\n• Patience." in soul)
+                    check("wizard soul skeleton is structured, not prose",
+                          "I will:\n• " in soul and "I will not:\n• " in soul and "_(What this means in practice.)_" in soul)
 
                     # A drafted soul script replaces the skeleton
                     r6 = await client.post("/api/profiles/create", json={
@@ -5281,7 +5283,7 @@ def test_profile_create_v2():
                         "name": "Preview Only", "personality": "Gruff mentor", "values": ["Patience"]})
                     pvj = pv.json()
                     check("wizard preview prompt", pvj.get("system_prompt", "").startswith("You are Preview Only."))
-                    check("wizard preview soul", "### Core Truths\n- Patience" in pvj.get("soul_script", ""))
+                    check("wizard preview soul", "### Core Truths\n• Patience." in pvj.get("soul_script", ""))
                     check("wizard preview writes nothing", not (tmp_profiles / "preview_only.yaml").exists())
 
                     # Draft with Codex Animus: interview turns, then each target
@@ -5356,7 +5358,7 @@ def test_profile_create_v2():
                         g1 = await client.post("/api/profiles/codex-draft", json=grow)
                         sysmsg = seen[-1][0]["content"]
                         check("grow: interviews about the existing agent", g1.status_code == 200
-                              and "expand the existing Soul Script of Iron Sage" in sysmsg)
+                              and "expand the Soul Script of Iron Sage" in sysmsg)
                         check("grow: Codex reads the saved Soul Script and prompt",
                               "- Honesty over comfort" in sysmsg and "You are Iron Sage." in sysmsg)
                         long_soul = "# Soul Script: Iron Sage\n\n### Origin\n" + "deep " * 3000
@@ -5371,8 +5373,29 @@ def test_profile_create_v2():
                               g2j.get("min_words") == round(len(long_soul.split()) * 1.2) and g2j.get("short") is True)
                         g3 = await client.post("/api/profiles/codex-draft", json={**grow, "finish": True})
                         check("grow: short scripts still aim for the wizard minimum", g3.json().get("min_words") == 2175)
-                        bad1 = await client.post("/api/profiles/codex-draft", json={**grow, "target": "system_prompt"})
-                        check("grow: only Soul Scripts", bad1.status_code == 400)
+                        check("grow: the Soul Script is rewritten in the structured format",
+                              "I will:" in seen[-1][-1]["content"] and "numbered ladder" in seen[-1][-1]["content"])
+
+                        # Expanding an existing agent's system prompt too
+                        gp = await client.post("/api/profiles/codex-draft", json={**grow, "target": "system_prompt"})
+                        check("grow prompt: interviews about the system prompt", gp.status_code == 200
+                              and "expand the system prompt of Iron Sage" in seen[-1][0]["content"])
+                        long_prompt = "You are Iron Sage. " + "steady " * 800
+                        gp2 = await client.post("/api/profiles/codex-draft", json={
+                            **grow, "target": "system_prompt", "finish": True, "original": long_prompt})
+                        check("grow prompt: second-person rewrite, expand don't replace",
+                              "rewrite Iron Sage's system prompt in full" in seen[-1][-1]["content"]
+                              and "second person" in seen[-1][-1]["content"]
+                              and "expand, don't replace" in seen[-1][-1]["content"])
+                        check("grow prompt: target is a fifth longer",
+                              gp2.json().get("min_words") == round(len(long_prompt.split()) * 1.2))
+                        check("grow prompt: Codex sees the draft being grown as the prompt",
+                              long_prompt.strip()[:40] in seen[-1][0]["content"])
+                        gp3 = await client.post("/api/profiles/codex-draft", json={
+                            **grow, "target": "system_prompt", "finish": True})
+                        check("grow prompt: short prompts aim for the wizard minimum", gp3.json().get("min_words") == 475)
+                        bad1 = await client.post("/api/profiles/codex-draft", json={**grow, "target": "nonsense"})
+                        check("grow: unknown target → 400", bad1.status_code == 400)
                         bad2 = await client.post("/api/profiles/codex-draft", json={**grow, "agent": "nobody_here"})
                         check("grow: unknown agent → 404", bad2.status_code == 404)
 

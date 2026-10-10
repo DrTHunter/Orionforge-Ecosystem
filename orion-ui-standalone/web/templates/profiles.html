@@ -1227,7 +1227,11 @@
                     placeholder="Who is this agent, in a few sentences? For example:&#10;&#10;You are Nova, a warm but blunt career coach. You speak casually, ask one sharp question at a time, and never sugarcoat. Your job is to help the user figure out their next move and actually take it.&#10;&#10;Cover: name and role · personality and tone · how they talk · what they help with · what they won't do.&#10;&#10;Not sure what to write? Ask Codex Animus to draft it for you."
                     onchange="saveField('{{ name }}', 'system_prompt_text', this.value)"
           >{{ ad.system_prompt }}</textarea>
-          <div class="field-hint">The foundational instruction set that defines behavior, personality, and role. Codex Animus can help you write one — just ask it in chat.</div>
+          <button class="btn btn-secondary wizard-codex-btn" style="margin-top:0.5rem;" onclick="openSoulGrow('{{ name }}', 'system_prompt')">
+            <img src="/uploads/avatar_codex_animus_forge2026.jpg" alt="" onerror="this.remove()">
+            Expand with Codex Animus
+          </button>
+          <div class="field-hint">The foundational instruction set that defines behavior, personality, and role. Codex Animus can interview you and expand it: it keeps what's there and goes deeper.</div>
         </div>
 
         <!-- ── Soul Script (collapsible) ── -->
@@ -1375,7 +1379,7 @@
 <div class="modal-overlay" id="grow-modal">
   <div class="modal-box wizard-box">
     <div class="modal-title" style="display:flex; justify-content:space-between; align-items:baseline;">
-      <span>Expand <span id="grow-agent"></span>'s Soul Script</span>
+      <span>Expand <span id="grow-agent"></span>'s <span id="grow-kind">Soul Script</span></span>
       <span class="wizard-steps" id="grow-steps"><span data-step="1">1 Interview</span><span data-step="2">2 Review</span></span>
     </div>
     <div class="wizard-body">
@@ -1390,7 +1394,7 @@
         <div class="field-hint" id="grow-hint" style="margin-top:0.5rem;">Answer a few questions, then have Codex write the expanded version.</div>
       </div>
       <div class="wizard-step" data-step="2">
-        <label class="field-label">Expanded Soul Script (edit freely before saving)</label>
+        <label class="field-label">Expanded <span id="grow-label">Soul Script</span> (edit freely before saving)</label>
         <textarea class="textarea-prompt soul-script" id="grow-text" style="min-height:16rem;"></textarea>
         <div class="wizard-meter" id="grow-meter"></div>
       </div>
@@ -2784,11 +2788,16 @@
     _wizardError(err.error || 'Failed to create agent');
   }
 
-  // ── Expand an existing Soul Script with Codex Animus (agent view) ──
+  // ── Expand an existing system prompt or Soul Script with Codex Animus (agent view) ──
   // Codex reads the agent's prompt and Soul Script, interviews the user about
-  // what to deepen, then rewrites it in full: everything kept, a fifth longer
-  // at least. Nothing is saved until the user approves the result.
-  const GROW = {agent: '', original: '', transcript: [], busy: false, min: 0};
+  // what to deepen, then rewrites the chosen one in full: everything kept, a
+  // fifth longer at least. Nothing is saved until the user approves the result.
+  const GROW_KINDS = {
+    system_prompt: {title: 'System Prompt', label: 'system prompt', editor: 'prompt-', field: 'system_prompt_text'},
+    soul_script: {title: 'Soul Script', label: 'Soul Script', editor: 'soul-', field: 'soul_script_text'},
+  };
+  const GROW = {agent: '', target: 'soul_script', original: '', transcript: [], busy: false, min: 0};
+  function _growKind() { return GROW_KINDS[GROW.target]; }
 
   function _growBubble(role, text, pending) {
     const chat = document.getElementById('grow-chat');
@@ -2830,7 +2839,7 @@
   async function _growRequest(extra) {
     const resp = await fetch('/api/profiles/codex-draft', {
       method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({target: 'soul_script', agent: GROW.agent, original: GROW.original,
+      body: JSON.stringify({target: GROW.target, agent: GROW.agent, original: GROW.original,
                             transcript: GROW.transcript, ...extra}),
     });
     const data = await resp.json().catch(() => ({}));
@@ -2855,22 +2864,26 @@
       document.getElementById('grow-answer').focus();
     }
   }
-  async function openSoulGrow(agent) {
-    const ed = document.getElementById('soul-' + agent);
+  async function openSoulGrow(agent, target) {
+    GROW.target = GROW_KINDS[target] ? target : 'soul_script';
+    const kind = _growKind();
+    const ed = document.getElementById(kind.editor + agent);
     if (!_promptsReady.has(agent)) {
       // The editor loads lazily; make sure we expand what's actually saved.
       try {
         const data = await (await fetch('/api/profiles/' + encodeURIComponent(agent))).json();
-        if (ed && data.soul_script && !ed.value) ed.value = data.soul_script;
+        if (ed && data[GROW.target] && !ed.value) ed.value = data[GROW.target];
       } catch (e) {}
     }
     GROW.agent = agent;
     GROW.original = ed ? ed.value : '';
     GROW.transcript = [];
     const was = _words(GROW.original);
-    GROW.min = Math.max(_wizardMin.soul_script, Math.round(was * 1.2));
+    GROW.min = Math.max(_wizardMin[GROW.target], Math.round(was * 1.2));
     const display = document.getElementById('name-' + agent)?.value || agent;
     document.getElementById('grow-agent').textContent = display;
+    document.getElementById('grow-kind').textContent = kind.title;
+    document.getElementById('grow-label').textContent = kind.label;
     document.getElementById('grow-intro').textContent = 'Now ' + was.toLocaleString() + ' words. Codex reads it, asks what to deepen, '
       + 'then rewrites it in full: everything kept, at least ' + GROW.min.toLocaleString() + ' words. Nothing is saved until you approve it.';
     document.getElementById('grow-chat').innerHTML = '';
@@ -2897,15 +2910,15 @@
     if (GROW.busy) return;
     _growBusy(true);
     _growError('');
-    const pending = _growBubble('codex', 'Rewriting the Soul Script… (a full one takes a minute or two)', true);
+    const pending = _growBubble('codex', 'Rewriting the ' + _growKind().label + '… (this can take a minute or two)', true);
     try {
       let data = await _growRequest({finish: true});
       GROW.min = data.min_words || GROW.min;
       for (let round = 1; data.short && round <= 2; round++) {
         pending.textContent = 'Expanding it: ' + data.words.toLocaleString() + ' of ' + data.min_words.toLocaleString() + ' words so far…';
-        data = await _growRequest({expand: true, current: data.soul_script});
+        data = await _growRequest({expand: true, current: data[GROW.target]});
       }
-      document.getElementById('grow-text').value = data.soul_script;
+      document.getElementById('grow-text').value = data[GROW.target];
       growShow(2);
       if (data.short) _growError('It came out at ' + data.words.toLocaleString() + ' words, short of '
         + data.min_words.toLocaleString() + '. Keep talking and write it again, or add to it here.');
@@ -2920,7 +2933,7 @@
     if (GROW.busy) return;
     const text = document.getElementById('grow-text').value.trim();
     if (_words(text) < _words(GROW.original)) {
-      return _growError('This is shorter than the current Soul Script. Expanding should only add.');
+      return _growError('This is shorter than the current ' + _growKind().label + '. Expanding should only add.');
     }
     _growBusy(true);
     const btn = document.getElementById('grow-save');
@@ -2928,15 +2941,17 @@
     try {
       const resp = await fetch('/api/profiles/' + encodeURIComponent(GROW.agent) + '/config', {
         method: 'PUT', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({soul_script_text: text}),
+        body: JSON.stringify({[_growKind().field]: text}),
       });
       if (!resp.ok) throw new Error('Save failed (HTTP ' + resp.status + ')');
-      const ed = document.getElementById('soul-' + GROW.agent);
+      const ed = document.getElementById(_growKind().editor + GROW.agent);
       if (ed) ed.value = text;
       _promptsReady.add(GROW.agent);
+      refreshProfStats(GROW.agent);
       GROW.busy = false;
       closeSoulGrow();
-      showSaveResultModal(true, 'The expanded Soul Script is saved and re-indexed.');
+      showSaveResultModal(true, GROW.target === 'soul_script'
+        ? 'The expanded Soul Script is saved and re-indexed.' : 'The expanded system prompt is saved.');
     } catch (err) {
       _growError(err.message);
     } finally {

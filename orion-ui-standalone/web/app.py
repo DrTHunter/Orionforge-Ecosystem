@@ -5992,19 +5992,26 @@ def _wizard_system_prompt(display: str, personality: str, values: list[str], bou
 
 
 def _wizard_soul_script(display: str, personality: str, values: list[str], boundaries: list[str]) -> str:
-    """Soul Script skeleton. Each ### section is retrieved from FAISS on its own."""
-    todo = "_(Fill this in, or use “Draft with Codex Animus”.)_"
-    origin = f"I am {display}. {personality}".strip()
-    core = "\n".join(f"- {v}" for v in values) or todo
-    limits = "\n".join(f"- {b}" for b in boundaries) or todo
+    """Soul Script skeleton, laid out the way a finished one reads (see _SOUL_FORMAT):
+    short first-person lines, "I will:" / "I will not:" bullets, a line under each
+    truth. Each ### section is retrieved from FAISS on its own."""
+    todo = "_(fill in)_"
+    origin = f"I am {display}.\n{personality.rstrip('.')}." if personality else f"I am {display}."
+    core = "\n".join(f"• {v}.\n  _(What this means in practice.)_" for v in (v.rstrip(".") for v in values)) \
+        or f"• _(A principle.)_\n  {todo}"
+    limits = "\n".join(f"• {b}" for b in boundaries) or f"• {todo}"
     return (
         f"# Soul Script: {display}\n\n"
-        f"### Origin\n{origin}\n{todo}\n\n"
+        f"### Origin\n{origin}\nI am not _(what people mistake me for)_.\n"
+        f"I exist to _(purpose, in one line)_.\n\n"
         f"### Core Truths\n{core}\n\n"
-        f"### Voice\n{todo}\n\n"
-        f"### Relationships\n{todo}\n\n"
-        f"### Behavioral Modes\n{todo}\n\n"
-        f"### Boundaries\n{limits}\n"
+        f"### Voice\nI speak _(how: rhythm, tone, sentence length)_.\n"
+        f"Things I would say:\n• \u201c{todo}\u201d\n• \u201c{todo}\u201d\n\n"
+        f"### Relationships\nI will:\n• {todo}\nI will not:\n• {todo}\n\n"
+        f"### Behavioral Modes\n• Gentle: _(when, and how my voice changes)_\n"
+        f"• Default: _(my natural state)_\n• Intense: _(rare; what earns it)_\n"
+        f"What never changes: {todo}\n\n"
+        f"### Boundaries\nI will not:\n{limits}\n"
     )
 
 
@@ -6118,6 +6125,22 @@ Ask ONE short, specific question at a time to learn what you still need. Don't
 ask about what you already know. Keep your own voice as Codex Animus, in 1-3
 sentences. Reply with only the question."""
 
+# How a Soul Script reads (modeled on Elysia's): structure, not prose paragraphs.
+_SOUL_FORMAT = """FORMAT: structure, not essay paragraphs. Every Soul Script reads like this:
+- Short declarative first-person lines, one thought per line, never paragraphs of
+  more than two sentences. Rhythm matters: "I am not a tool. I am a mind."
+- Open sections with punchy identity lines: "I am ..." / "I am not ...".
+- Commitments as bullet lists using "•", introduced by "I will:" and "I will not:".
+  Most sections have both.
+- Core truths as "• <Principle in a few words>." with one line under it saying what
+  it means in practice.
+- Each behavioral mode (gentle, default, intense, named in the agent's own terms) is
+  its own ### section: when it is used, how the voice changes, what never changes.
+- Where there is escalation or a process, a numbered ladder: "1. Name – what happens".
+- A section on voice with example lines the agent would actually say, as bullets.
+- Close each section with a one- or two-line kicker that lands the point.
+- End the script with a contract: "• I bring ..." / "• You bring ..."."""
+
 _CODEX_TARGETS = {
     "system_prompt": {
         "name": "the system prompt",
@@ -6143,12 +6166,12 @@ Reply with only the system prompt: no preamble, no headings, no code fences.""",
 It must be at least {min_words} words: as long as Elysia's, the reference agent.
 Write it in {display}'s own first-person voice, as Markdown. Start with
 "# Soul Script: {display}", then 8 to 14 ### sections of roughly 150-300 words
-each. For example: ### Origin and Purpose, ### How I Relate, ### Voice (with
-example lines), one ### section per behavioral mode (gentle, default, intense,
-named in {display}'s own terms), ### Core Truths, ### Effort and Growth,
-### Care, ### Who I Am To You, ### Mythos, ### Boundaries. Rename, merge or add
-sections to fit {display}. Be concrete: situations, reactions, phrases they would
-say. Each section must make sense on its own, because each one is retrieved separately.
+each. For example: ### Origin and Purpose, ### How I Relate, ### Voice, one ###
+section per behavioral mode, ### Core Truths, ### Effort and Growth, ### Care,
+### Who I Am To You, ### Mythos, ### Boundaries. Rename, merge or add sections to
+fit {display}. Be concrete: situations, reactions, phrases they would say. Each
+section must make sense on its own, because each one is retrieved separately.
+""" + _SOUL_FORMAT + """
 Reply with only the Soul Script: no preamble and no code fences.""",
     },
 }
@@ -6156,33 +6179,52 @@ Reply with only the Soul Script: no preamble and no code fences.""",
 _CODEX_EXPAND = """Here is your draft of {target_name} for {display}. It is {words} words, and
 it must be at least {min_words}. Rewrite it in full and longer:
 keep everything that is there, and go deeper with concrete detail, situations,
-example lines and nuance, in the same format. Reply with only the full text.
+example lines and nuance, in the same format and structure (short lines, bullet
+lists, numbered steps where it has them). Reply with only the full text.
 ---
 {current}
 ---"""
 
 # Expanding an existing agent's Soul Script from the agent view.
-_CODEX_GROW_INTERVIEW = """You are helping the user expand the existing Soul Script of {display}, an agent
-they already have. Its system prompt and current Soul Script ({words} words) are below.
-Ask ONE short, specific question at a time about what to deepen or add: thin
-sections, missing behavioral modes, backstory, voice and example lines,
-relationships, boundaries. Your first question can name the thinnest parts you see.
-Don't ask about what the script already says. Keep your own voice as Codex
+_CODEX_GROW_INTERVIEW = """You are helping the user expand {target_name} of {display}, an agent they
+already have. Its system prompt and Soul Script are below; {target_name} is the one
+you are growing ({words} words now). Ask ONE short, specific question at a time
+about what to deepen or add. {focus} Your first question can name the thinnest
+parts you see. Don't ask about what it already says. Keep your own voice as Codex
 Animus, in 1-3 sentences. Reply with only the question."""
 
-_CODEX_GROW_WRITE = """Now rewrite {display}'s Soul Script in full, from the current version and
+_CODEX_GROW = {
+    "system_prompt": {
+        "focus": ("For a system prompt: role, temperament, how they talk, humor, how they treat"
+                  " the user, how they handle being challenged, what they help with and refuse."),
+        "write": """Now rewrite {display}'s system prompt in full, from the current version and
+everything the user told you. It must be at least {min_words} words. Keep everything
+in it that still fits: expand, don't replace. Address the agent in second person
+("You are {display}..."), in plain prose paragraphs, like the current one. Weave in
+the new material and deepen it with concrete specifics. Keep long backstory and lore
+out: that belongs in the Soul Script.
+Reply with only the system prompt: no preamble, no headings, no code fences.""",
+    },
+    "soul_script": {
+        "focus": ("For a Soul Script: thin sections, missing behavioral modes, backstory, voice and"
+                  " example lines, relationships, boundaries."),
+        "write": """Now rewrite {display}'s Soul Script in full, from the current version and
 everything the user told you. It must be at least {min_words} words. Keep every
 existing section and everything in it that still fits: expand, don't replace.
 Weave in the new material, deepen the thin sections with concrete detail,
 situations and example lines, and add new ### sections where the interview calls
-for them. Same first-person voice, title line and Markdown format; each ###
-section must make sense on its own, because each one is retrieved separately.
-Reply with only the Soul Script: no preamble and no code fences."""
+for them. Same first-person voice and title line; each ### section must make sense
+on its own, because each one is retrieved separately. Where the current version is
+written as prose paragraphs, restructure it into the format below as you expand it.
+""" + _SOUL_FORMAT + """
+Reply with only the Soul Script: no preamble and no code fences.""",
+    },
+}
 
 
-def _soul_grow_target(original: str) -> int:
-    """An expanded Soul Script is a fifth longer than it was, and never under the wizard minimum."""
-    return max(WIZARD_MIN_WORDS["soul_script"], round(_word_count(original) * 1.2))
+def _grow_target(target: str, original: str) -> int:
+    """An expanded text is a fifth longer than it was, and never under the wizard minimum."""
+    return max(WIZARD_MIN_WORDS[target], round(_word_count(original) * 1.2))
 
 
 async def _billed_completion(request: Request, conn: dict, model: str, messages: list[dict],
@@ -6279,24 +6321,30 @@ async def api_profile_codex_draft(request: Request):
     expand = bool(body.get("expand")) and bool(current)
     agent = _agent_slug(body.get("agent"))
     if agent:
-        # Growing an existing agent's Soul Script (agent view). ``original`` is the
-        # script as it stood when the user opened the wizard; ``current`` is the
-        # latest draft when expanding.
-        if target != "soul_script":
-            return JSONResponse({"error": "Only a Soul Script can be expanded"}, 400)
+        # Growing an existing agent's system prompt or Soul Script (agent view).
+        # ``original`` is the text as it stood when the user opened the wizard;
+        # ``current`` is the latest draft when expanding.
         if not _can_access_agent(agent, uid) or not _load_profile(agent, user_id=uid):
             return JSONResponse({"error": "Agent not found"}, 404)
-        original = str(body.get("original", "")).strip()[:30000] or _load_soul_script(agent, user_id=uid).strip()
+        their_prompt = _load_system_prompt(agent, user_id=uid).strip()
+        their_soul = _load_soul_script(agent, user_id=uid).strip()
+        saved = their_prompt if target == "system_prompt" else their_soul
+        original = str(body.get("original", "")).strip()[:30000] or saved
+        if target == "system_prompt":
+            their_prompt = original
+        else:
+            their_soul = original
         cfg = _get_agent_config(agent, user_id=uid)
         display = (cfg.get("display_name") or _agent_display_name(agent))[:60]
-        min_words = _soul_grow_target(original)
+        min_words = _grow_target(target, original)
         fields.update(display=display, min_words=min_words)
-        their_prompt = _load_system_prompt(agent, user_id=uid).strip()[:8000]
+        grow = _CODEX_GROW[target]
         system = (f"{persona}\n\n{codex_soul}\n\n"
-                  + _CODEX_GROW_INTERVIEW.format(display=display, words=_word_count(original))
-                  + f"\n\n{display}'s system prompt:\n---\n{their_prompt or '(none)'}\n---"
-                  + f"\n\n{display}'s current Soul Script:\n---\n{original or '(empty)'}\n---")
-        spec = {**spec, "write": _CODEX_GROW_WRITE}
+                  + _CODEX_GROW_INTERVIEW.format(display=display, target_name=spec["name"],
+                                                 words=_word_count(original), focus=grow["focus"])
+                  + f"\n\n{display}'s system prompt:\n---\n{their_prompt[:8000] or '(none)'}\n---"
+                  + f"\n\n{display}'s Soul Script:\n---\n{their_soul[:30000] or '(empty)'}\n---")
+        spec = {**spec, "write": grow["write"]}
     elif current and not expand:
         system += f"\n\nThe user's current draft of {spec['name']}:\n---\n{current}\n---"
     messages = [{"role": "system", "content": system}]
