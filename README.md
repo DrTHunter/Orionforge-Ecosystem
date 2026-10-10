@@ -19,8 +19,8 @@ You need **Python 3.10+** (3.11 recommended) and about 2 GB of free disk (FAISS 
 **1. Download**
 
 ```bash
-git clone https://github.com/DrTHunter/Orionforge-Ecosystem.git
-cd Orionforge-Ecosystem
+git clone https://github.com/DrTHunter/Orionforge_ecosystem_local.git
+cd Orionforge_ecosystem_local
 ```
 
 No git? Use **Code → Download ZIP** on GitHub and unzip it.
@@ -155,7 +155,7 @@ A handy convention: tell your client that a message of `..` means `load_default(
 ## Project layout
 
 ```
-Orionforge-Ecosystem/
+Orionforge_ecosystem_local/
 ├── start-local.ps1 / start-local.sh   # one-command local launch
 ├── requirements.txt
 ├── orion-ui-standalone/     # the app (this is what you run)
