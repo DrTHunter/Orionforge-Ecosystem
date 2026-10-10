@@ -79,9 +79,20 @@ class MemoryTool:
 
     def __init__(self):
         self._mem: FAISSMemory = None
+        self._user_mems: Dict[str, FAISSMemory] = {}
 
     def _get_mem(self) -> FAISSMemory:
-        """Lazy-create the FAISSMemory instance."""
+        """The caller's memory: the owner's global vault, or a signed-in user's own
+        (``data/users/<uid>/memory/``), so one user's agents never read another's."""
+        from src.request_context import data_scope, scope_dir
+        uid = data_scope.get()
+        mem_dir = scope_dir("memory", create=True)
+        if mem_dir is not None:
+            if uid not in self._user_mems:
+                (mem_dir / "faiss").mkdir(parents=True, exist_ok=True)
+                self._user_mems[uid] = FAISSMemory(vault_path=str(mem_dir / "vault.jsonl"),
+                                                   faiss_dir=str(mem_dir / "faiss"))
+            return self._user_mems[uid]
         if self._mem is None:
             self._mem = FAISSMemory(
                 vault_path=_get_vault_path(),

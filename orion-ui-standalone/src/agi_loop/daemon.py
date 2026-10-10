@@ -188,7 +188,7 @@ class JsonlLog:
 
 class LoopDaemon:
     def __init__(self, host: Host, config: LoopConfig, data_dir: Path, embedder: Optional[Embedder] = None,
-                 loop_id: str = "supervisor", group=None):
+                 loop_id: str = "supervisor", group=None, linux: bool = True):
         self.host = host
         self.embedder = embedder or HashEmbedder()
         self.config = config
@@ -201,7 +201,8 @@ class LoopDaemon:
         self.workbench = Workbench(self.data_dir / "workbench") if config.workbench else None
         self.loop_id = loop_id
         self.group = group   # the shared room (groupchat.GroupChat), if this loop is in one
-        self.linux = Linux.from_env(loop_id)
+        # A Linux machine is found by the loop's id; only the owner's loops may have one.
+        self.linux = Linux.from_env(loop_id) if linux else None
         self.channels = list(DEFAULT_CHANNELS)
         self.tools = LoopTools(self)
 

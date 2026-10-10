@@ -289,7 +289,7 @@
     <button class="al-tab" data-tab="predictions">Predictions</button>
     <button class="al-tab" data-tab="processes">Processes</button>
     <button class="al-tab" data-tab="workbench">Workbench</button>
-    <button class="al-tab" data-tab="linux">Linux</button>
+    {% if is_owner %}<button class="al-tab" data-tab="linux">Linux</button>{% endif %}
     <button class="al-tab" data-tab="inbox">Inbox <span class="al-badge zero" id="inbox-tab-badge">0</span></button>
     <button class="al-tab" data-tab="journal">Journal</button>
     <button class="al-tab" data-tab="ticks">Ticks</button>
@@ -299,7 +299,7 @@
   <select class="al-tabselect" id="al-tabselect" aria-label="Section">
     <option value="overview">Overview</option><option value="world">Field</option>
     <option value="predictions">Predictions</option><option value="processes">Processes</option>
-    <option value="workbench">Workbench</option><option value="linux">Linux</option><option value="inbox">Inbox</option>
+    <option value="workbench">Workbench</option>{% if is_owner %}<option value="linux">Linux</option>{% endif %}<option value="inbox">Inbox</option>
     <option value="journal">Journal</option><option value="ticks">Ticks</option>
     <option value="config">Configuration</option>
     <option value="loops">Loops</option>
@@ -658,6 +658,7 @@
       <label class="wz-check"><input type="checkbox" id="wz-workbench" checked> Give it a workbench (a folder of its own to read and write)</label>
       <label class="wz-check"><input type="checkbox" id="wz-start" checked> Wake it as soon as it's created</label>
       <p class="hint">Everything else starts at the defaults; tune it later under Configuration.</p>
+      {% if not is_owner %}<p class="hint">Each time it thinks, it's paid from your credits at the same rate as chat (2&times; the API cost), unless its connection uses your own API key. If your credits run out it goes to sleep. You can have up to {{ max_loops }} loops, one awake at a time.</p>{% endif %}
     </div>
 
     <div class="wz-err" id="wz-err"></div>
@@ -756,7 +757,7 @@ function toast(msg, type) {
   clearTimeout(t._h); t._h = setTimeout(() => t.className = 'al-toast', 2600);
 }
 const LOOP_ID = {{ loop|tojson }};
-try { localStorage.setItem('agiLoopLast', LOOP_ID); } catch (e) {}  // the sidebar's AGI Loop entry reopens it
+if (LOOP_ID) { try { localStorage.setItem('agiLoopLast', LOOP_ID); } catch (e) {} }  // the sidebar's AGI Loop entry reopens it
 async function api(path, opts) {
   path += (path.includes('?') ? '&' : '?') + 'loop=' + encodeURIComponent(LOOP_ID);
   const r = await fetch(path, opts);
@@ -1597,7 +1598,7 @@ async function loadLoopsTab() {
       + (l.built_in ? '<span>Built in</span>'
         : `<button class="al-btn al-btn-sm b-danger" onclick="event.stopPropagation(); openDeleteWizard('${id}')">Delete</button>`)
       + '</div></div>';
-  }).join('') : '<div class="al-empty">No loops.</div>';
+  }).join('') : '<div class="al-empty">You don\'t have a loop yet. Make one with &#xFF0B; New loop.</div>';
   const archived = (await get('/api/agi-loop/archive')).archived || [];
   $('lp-archive').innerHTML = archived.length ? archived.map(a =>
     `<div class="lp-arow"><span><b>${esc(a.id)}</b> <span class="al-dim">· ${esc(a.agent || '?')} · archived ${esc(new Date(a.archived_at).toLocaleString())} · ${esc(dzSize(a.bytes))}</span></span>`
@@ -1689,6 +1690,13 @@ async function resetWorld() {
 
 /* ── Boot ─────────────────────────────────────────── */
 (function boot() {
+  if (!LOOP_ID) {
+    document.querySelectorAll('.al-vitals, #al-tabselect, #hdr-model, #hdr-phase').forEach(el => { el.style.display = 'none'; });
+    document.querySelectorAll('.al-tab').forEach(b => { if (b.dataset.tab !== 'loops') b.style.display = 'none'; });
+    switchTab('loops');
+    setTimeout(openWizard, 0);
+    return;
+  }
   fillConfigForm(AL.config);
   loadResolvedModel();
   let tab = 'overview';

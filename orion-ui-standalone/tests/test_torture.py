@@ -11701,11 +11701,12 @@ def test_agi_loop_app_wiring():
           "def _bg_faiss_then_signal():" in src and "finally:\n            faiss_ready.set()" in src)
 
     # ── the slab endpoint ──
-    saved_chat = A._group_chat
+    saved_chat = A._group_chats.get(None)
     try:
-        A._group_chat = GroupChat(Path(tmp) / "room" / "group_chat.jsonl", lambda: {})
-        A._group_chat.slab.write("k_os", "k_os", 1, "one")
-        A._group_chat.slab.write("supervisor", "supervisor", 2, "two")
+        # One room per owner now; this is the owner's.
+        A._group_chats[None] = room = GroupChat(Path(tmp) / "room" / "group_chat.jsonl", lambda: {})
+        room.slab.write("k_os", "k_os", 1, "one")
+        room.slab.write("supervisor", "supervisor", 2, "two")
         from httpx import ASGITransport, AsyncClient
 
         async def call():
@@ -11720,7 +11721,10 @@ def test_agi_loop_app_wiring():
         check("the endpoint is behind the AGI-loop owner check",
               "async def api_group_chat_slab" in src and "if denied := _agi_denied(request):" in src[src.index("async def api_group_chat_slab"):][:400])
     finally:
-        A._group_chat = saved_chat
+        if saved_chat is None:
+            A._group_chats.pop(None, None)
+        else:
+            A._group_chats[None] = saved_chat
         shutil.rmtree(tmp, ignore_errors=True)
 
 
@@ -12132,14 +12136,16 @@ def test_agi_loop_watchdog():
     import web.app as A
     src = open(A.__file__, encoding="utf-8").read()
     check("the engine runs the watchdog from startup", "asyncio.create_task(_watch_loops())" in src)
-    check("it escalates into the room as 'watchdog'", '_group_chat.post("watchdog", "watchdog", text)' in src)
-    check("it only watches loops that exist (creates none)", "(d := _get_loop_daemon(lid)) is not None" in src)
-    saved = A._get_loop_daemon
+    check("it escalates into the loop owner's room as 'watchdog'",
+          '_post_in_scope(key.split("|", 1)[0] or None, "watchdog", "watchdog", text)' in src)
+    check("it only watches loops that exist (creates none)", "for (o, lid), d in _all_loop_daemons().items()" in src)
+    saved = A._all_loop_daemons
     try:
-        A._get_loop_daemon = lambda lid: k if lid == "k_os" else None
-        check("the app's watch list is exactly the live daemons", set(A._watchdog._daemons()) == {"k_os"})
+        A._all_loop_daemons = lambda: {(None, "k_os"): k, ("alice", "atlas"): k}
+        check("the app's watch list is exactly the live daemons, each tagged with its owner",
+              set(A._watchdog._daemons()) == {"|k_os", "alice|atlas"})
     finally:
-        A._get_loop_daemon = saved
+        A._all_loop_daemons = saved
 
 
 # ═════════════════════════════════════════════
@@ -12644,6 +12650,278 @@ def test_upload_thumbnails():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+
+# ═════════════════════════════════════════════
+# AGI LOOP FOR EVERYONE — each signed-in user has their own loops
+# ═════════════════════════════════════════════
+def test_agi_loop_per_user():
+    import pathlib
+    print("\n=== TORTURE: AGI loop per user ===")
+    import asyncio
+    import web.app as _app
+    import src.agi_loop as al
+    import src.request_context as rc
+    import src.data_paths as dp
+    import src.tools.memory_tool as mt
+    tmp = Path(tempfile.mkdtemp())
+    orig = (al.CONFIG_FILE, al.DATA_DIR, al.USERS_DIR, rc._DATA_DIR, _app.get_auth_config)
+    al.CONFIG_FILE = tmp / "config" / "agi_loop.json"
+    al.DATA_DIR = tmp / "data" / "orion" / "agi_loop"
+    al.USERS_DIR = tmp / "data" / "users"
+    rc._DATA_DIR = tmp / "data"
+    al.CONFIG_FILE.parent.mkdir(parents=True)
+    _app.get_auth_config = lambda: {"auth_enabled": False}
+    al._daemons.clear()
+    _app._group_chats.clear()
+
+    def as_user(uid, coro_fn):
+        tok = rc.data_scope.set(uid)
+        try:
+            return asyncio.run(coro_fn())
+        finally:
+            rc.data_scope.reset(tok)
+
+    from httpx import ASGITransport, AsyncClient
+
+    def client():
+        return AsyncClient(transport=ASGITransport(app=_app.app), base_url="http://test")
+
+    try:
+        # ── A brand-new user: an empty AGI loop, no Linux, told what it costs
+        async def alice_first():
+            async with client() as c:
+                r = await c.get("/api/agi-loop/loops")
+                check("new user: no loops", r.json().get("loops") == [])
+                r = await c.get("/api/agi-loop/status")
+                check("new user: loop-only routes say there's no loop", r.status_code == 404)
+                r = await c.get("/agi-loop")
+                check("new user: the page opens", r.status_code == 200)
+                check("new user: no Linux tab", 'data-tab="linux"' not in r.text)
+                check("new user: the wizard says what it costs", "paid from your credits" in r.text)
+                for name in ("atlas", "nova", "ember"):
+                    r = await c.post("/api/agi-loop/loops", json={"id": name, "config": {"agent": "aristotle"}})
+                    check(f"alice makes {name}", r.status_code == 200 and r.json().get("ok"))
+                r = await c.post("/api/agi-loop/loops", json={"id": "fourth", "config": {"agent": "aristotle"}})
+                check("a fourth loop is refused", r.status_code == 400 and "up to 3" in r.json().get("reason", ""))
+                r = await c.get("/api/agi-loop/linux/log?loop=atlas")
+                check("a user's loop has no Linux machine", r.status_code == 403)
+                d = _app._loop_daemon(loop="atlas")
+                check("…not even by env var", d.linux is None)
+                d.running = True
+                r = await c.post("/api/agi-loop/start?loop=nova")
+                check("one awake at a time", r.status_code == 409 and "atlas" in r.json().get("reason", ""))
+                d.running = False
+                r = await c.post("/api/group-chat/send", json={"text": "alice was here"})
+                check("alice posts in her room", r.status_code == 200)
+        as_user("alice", alice_first)
+
+        # ── Someone else sees none of it
+        async def bob_looks():
+            async with client() as c:
+                r = await c.get("/api/agi-loop/loops")
+                check("bob doesn't see alice's loops", r.json().get("loops") == [])
+                r = await c.get("/api/agi-loop/loops/atlas")
+                check("bob can't open alice's loop by name", r.status_code == 404)
+                r = await c.get("/api/agi-loop/status?loop=atlas")
+                check("bob can't read alice's loop status", r.status_code == 404)
+                r = await c.get("/api/group-chat/messages")
+                check("bob doesn't see alice's room", all("alice was here" not in str(m) for m in r.json().get("messages", [])))
+                r = await c.get("/api/agi-loop/archive")
+                check("bob's archive is his own", r.json().get("archived") == [])
+                r = await c.post("/api/agi-loop/loops", json={"id": "atlas", "config": {"agent": "seraphine"}})
+                check("bob can use the same name", r.status_code == 200)
+                r = await c.get("/api/agi-loop/config?loop=atlas")
+                check("…and gets his own loop under it", r.json().get("agent") == "seraphine")
+        as_user("bob", bob_looks)
+
+        async def alice_again():
+            async with client() as c:
+                r = await c.get("/api/agi-loop/config?loop=atlas")
+                check("alice's atlas is still hers", r.json().get("agent") == "aristotle")
+                r = await c.get("/api/group-chat/messages")
+                check("alice's room kept her message", any("alice was here" in str(m) for m in r.json().get("messages", [])))
+        as_user("alice", alice_again)
+
+        # ── The owner keeps their four, and never sees users' loops
+        async def owner_looks():
+            async with client() as c:
+                ids = [l["id"] for l in (await c.get("/api/agi-loop/loops")).json().get("loops", [])]
+                check("owner keeps the built-ins", ids[:2] == ["supervisor", "k_os"])
+                check("owner doesn't see users' loops", "atlas" not in ids and "nova" not in ids)
+                r = await c.get("/agi-loop")
+                check("owner still has the Linux tab", 'data-tab="linux"' in r.text)
+        as_user(None, owner_looks)
+
+        # ── Billing: a user's loop pays from credits on platform keys, nothing else does
+        calls = {"deduct": [], "balance": 100}
+
+        class _Resp:
+            status_code = 200
+            text = ""
+
+            def json(self):
+                return {"choices": [{"message": {"content": "hi"}, "finish_reason": "stop"}],
+                        "usage": {"prompt_tokens": 100, "completion_tokens": 50, "total_tokens": 150}, "model": "m"}
+
+        class _Client:
+            def __init__(self, *a, **k):
+                pass
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *a):
+                return False
+
+            async def post(self, *a, **k):
+                return _Resp()
+
+        saved = (_app.httpx.AsyncClient, _app.get_user_credits, _app.deduct_user_credits, _app.estimate_llm_credit_cost_safe)
+        _app.httpx.AsyncClient = _Client
+        _app.get_user_credits = lambda uid: calls["balance"]
+        _app.deduct_user_credits = lambda uid, amount, note: calls["deduct"].append((uid, amount))
+        _app.estimate_llm_credit_cost_safe = lambda cost, tokens: 7
+        try:
+            platform = {"url": "http://x", "platform_hosted": True, "provider": "openai"}
+            own_key = {"id": "__userkey_openai", "url": "http://x", "platform_hosted": False, "provider": "openai"}
+            owners_private = {"id": "owners-own", "url": "http://x", "platform_hosted": False, "provider": "openai"}
+            msgs = [{"role": "user", "content": "x"}]
+            host = _app._OrionLoopHost("atlas", "alice")
+            as_user("alice", lambda: host._post("a", platform, "m", msgs, []))
+            check("a user's loop pays for platform calls", calls["deduct"] == [("alice", 7)])
+            calls["deduct"].clear()
+            as_user("alice", lambda: host._post("a", own_key, "m", msgs, []))
+            check("…but not for calls on their own key", calls["deduct"] == [])
+            as_user("alice", lambda: host._post("a", owners_private, "m", msgs, []))
+            check("…and pays on the owner's private connections too", calls["deduct"] == [("alice", 7)])
+            calls["deduct"].clear()
+            as_user(None, lambda: _app._OrionLoopHost("supervisor", None)._post("a", platform, "m", msgs, []))
+            check("…and the owner's loops aren't charged", calls["deduct"] == [])
+            calls["balance"] = 0
+            try:
+                as_user("alice", lambda: host._post("a", platform, "m", msgs, []))
+                check("no credits, no call", False)
+            except RuntimeError as exc:
+                check("no credits, no call", "Out of credits" in str(exc) and calls["deduct"] == [])
+            calls["balance"] = 3
+            as_user("alice", lambda: host._post("a", platform, "m", msgs, []))
+            check("short on credits: charged what's left, never below zero", calls["deduct"] == [("alice", 3)])
+        finally:
+            (_app.httpx.AsyncClient, _app.get_user_credits, _app.deduct_user_credits,
+             _app.estimate_llm_credit_cost_safe) = saved
+
+        # ── The inbox and the memory tool follow the same line
+        tok = rc.data_scope.set("alice")
+        try:
+            check("a user's inbox is their own", pathlib.Path(dp.inbox_path()).is_relative_to(tmp / "data" / "users" / "alice"))
+        finally:
+            rc.data_scope.reset(tok)
+        check("the owner's inbox is the shared one", "users" not in pathlib.Path(dp.inbox_path()).parts)
+
+        made = []
+
+        class _Mem:
+            def __init__(self, vault_path, faiss_dir):
+                made.append(vault_path)
+
+        saved_mem = mt.FAISSMemory
+        mt.FAISSMemory = _Mem
+        try:
+            tool = mt.MemoryTool()
+            tok = rc.data_scope.set("alice")
+            try:
+                a1 = tool._get_mem()
+            finally:
+                rc.data_scope.reset(tok)
+            tok = rc.data_scope.set("bob")
+            try:
+                b1 = tool._get_mem()
+            finally:
+                rc.data_scope.reset(tok)
+            check("memory tool: each user gets their own vault", a1 is not b1
+                  and "alice" in made[0] and "bob" in made[1])
+            check("memory tool: a user's vault is the one their chat uses",
+                  made[0].replace("\\", "/").endswith("users/alice/memory/vault.jsonl"))
+        finally:
+            mt.FAISSMemory = saved_mem
+    finally:
+        al._daemons.clear()
+        _app._group_chats.clear()
+        al.CONFIG_FILE, al.DATA_DIR, al.USERS_DIR, rc._DATA_DIR, _app.get_auth_config = orig
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+
+# ═════════════════════════════════════════════
+# LOADING — polls answer "unchanged", one embedding model, light pages
+# ═════════════════════════════════════════════
+def test_load_optimizations():
+    print("\n=== TORTURE: Loading optimizations ===")
+    import asyncio
+    import web.app as _app
+    from httpx import ASGITransport, AsyncClient
+
+    async def run():
+        async with AsyncClient(transport=ASGITransport(app=_app.app), base_url="http://test") as c:
+            url = "/api/agi-loop/loops"
+            r1 = await c.get(url)
+            tag = r1.headers.get("etag", "")
+            check("poll: a fingerprint on polled replies", r1.status_code == 200 and tag.startswith('W/"'))
+            check("poll: the browser must re-ask (no stale data)", "no-cache" in r1.headers.get("cache-control", ""))
+            r2 = await c.get(url, headers={"If-None-Match": tag})
+            check("poll: unchanged comes back as an empty 304", r2.status_code == 304 and r2.content == b""
+                  and r2.headers.get("etag") == tag)
+            r3 = await c.get(url, headers={"If-None-Match": 'W/"something-else"'})
+            check("poll: a stale fingerprint gets the full reply", r3.status_code == 200 and r3.content == r1.content)
+            r4 = await c.get(url, headers={"If-None-Match": tag, "Accept-Encoding": "gzip"})
+            check("poll: works under gzip too", r4.status_code == 304)
+            r5 = await c.get("/api/agi-loop/loops/nope-not-a-loop")
+            check("poll: errors pass through untouched", r5.status_code == 404 and "etag" not in r5.headers)
+            r6 = await c.get("/api/settings")
+            check("poll: other routes are left alone", "etag" not in r6.headers)
+
+    saved = _app.get_auth_config
+    _app.get_auth_config = lambda: {"auth_enabled": False}
+    try:
+        asyncio.run(run())
+    finally:
+        _app.get_auth_config = saved
+    check("poll: covers what the pages poll", all(_app._PollETag.PATHS.match(p) for p in (
+        "/api/agi-loop/status", "/api/agi-loop/conversation", "/api/agi-loop/events", "/api/group-chat/messages",
+        "/api/credits/balance", "/api/inbox/list")) and not _app._PollETag.PATHS.match("/api/chat/stream"))
+
+    from src.memory.shared_encoder import shared_encoder
+    built = []
+
+    class _Model:
+        def __init__(self, name):
+            built.append(name)
+
+        def encode(self, texts):
+            return [len(t) for t in texts]
+
+        def get_sentence_embedding_dimension(self):
+            return 3
+
+    a, b = shared_encoder("m-a", _Model), shared_encoder("m-a", _Model)
+    c2 = shared_encoder("m-b", _Model)
+    check("model: one copy per model, shared by everyone", a is b and built == ["m-a", "m-b"] and c2 is not a)
+    check("model: encode and the rest pass through", a.encode(["abc"]) == [3] and a.get_sentence_embedding_dimension() == 3)
+    for mod in ("src/memory/faiss_memory.py", "src/memory/notes_faiss.py", "src/agi_loop/embedding.py"):
+        src = (Path(__file__).resolve().parent.parent / mod).read_text(encoding="utf-8")
+        check(f"model: {mod} uses the shared copy", "shared_encoder(self.model_name, SentenceTransformer)" in src)
+
+    tpl = Path(__file__).resolve().parent.parent / "web" / "templates"
+    login = (tpl / "login.html").read_text(encoding="utf-8")
+    check("login: no in-browser Tailwind compiler", "cdn.tailwindcss.com" not in login)
+    check("login: the prebuilt stylesheet instead", '<link rel="stylesheet" href="/static/tailwind.css">' in login)
+    check("login: keeps room for the show-password button", ".login-input.pr-10 { padding-right: 2.5rem; }" in login)
+    base = (tpl / "base.html").read_text(encoding="utf-8")
+    check("sidebar: the small logo", 'class="nav-logo-full-img" src="/static/logo-text-bottom-sm.png"' in base)
+    fav = Path(__file__).resolve().parent.parent / "web" / "static" / "favicon.svg"
+    check("favicon: small", fav.stat().st_size < 64 * 1024, fav.stat().st_size)
+
+
 if __name__ == "__main__":
     test_boundary_policy()
     test_pii_guard_extended()
@@ -12705,6 +12983,8 @@ if __name__ == "__main__":
     test_registry_get_tool_defs()
     test_profile_create_v2()
     test_upload_thumbnails()
+    test_agi_loop_per_user()
+    test_load_optimizations()
     test_settings_helpers()
     test_vault_search_min_score()
     test_tag_sort_mode()

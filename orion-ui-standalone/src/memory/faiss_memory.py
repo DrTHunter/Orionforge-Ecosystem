@@ -78,7 +78,8 @@ class FAISSMemory:
     def encoder(self) -> SentenceTransformer:
         if self._encoder is None:
             log.info("[faiss] Loading embedding model: %s", self.model_name)
-            self._encoder = SentenceTransformer(self.model_name)
+            from src.memory.shared_encoder import shared_encoder
+            self._encoder = shared_encoder(self.model_name, SentenceTransformer)  # one copy per process
             self._embedding_dim = self._encoder.get_sentence_embedding_dimension()
             log.info("[faiss] Embedding dim: %d", self._embedding_dim)
         return self._encoder

@@ -140,6 +140,12 @@ Beyond chat, OrionForge can run an agent as a **loop**: a wall-clock daemon (`or
 
 Two loops are built in: **Supervisor** (`/agi-loop`) and **K-OS** (`/agi-loop?loop=k_os`). They don't start on a fresh install — you start them. (A loop you started resumes after a restart.)
 
+**Every signed-in user has their own loops.** The built-in loops belong to the owner (admins, or local single-user mode). Anyone else who signs in starts with an empty AGI Loop page and makes their own with the New loop wizard. Each user's loops, archive, group chat, inbox, tool requests and memory-tool vault live under `data/users/<uid>/`; nobody can see or reach another user's, even by guessing a loop's name. Rules for users' loops:
+- **Up to 3 loops, one awake at a time** (they share the server).
+- **Paid from credits** at the same rate as chat (2× the API cost) for every call that isn't on the user's own API key. A loop that runs out of credits goes to sleep. Admins are never charged.
+- **No Linux machine** for now; those stay with the owner's loops.
+- A loop runs as its owner even in the background, so after a restart it comes back with that user's profile, keys and credits.
+
 Three wizards on the loop page manage the rest:
 
 - **New loop**: pick an agent and a loop name, a connection and model, a rhythm (Calm, Balanced or Lively, or your own intervals and daily energy), review, create. The loop exists because its config file (`config/agi_loop_<id>.json`) does, so the sidebar, group chat, watchdog and restart pick it up.

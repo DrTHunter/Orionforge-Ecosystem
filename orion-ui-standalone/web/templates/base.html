@@ -132,7 +132,7 @@
     <nav class="main-nav" id="main-nav">
       <div class="nav-logo">
         <div class="nav-logo-full">
-          <img class="nav-logo-full-img" src="/static/logo-text-bottom.png" alt="Orion Forge" style="height:64px;width:auto;display:block;">
+          <img class="nav-logo-full-img" src="/static/logo-text-bottom-sm.png" alt="Orion Forge" style="height:64px;width:auto;display:block;">
           <img class="nav-logo-icon-img" src="/static/logo-icon-sm.png" alt="Orion Forge" style="height:40px;width:auto;display:none;">
         </div>
         <button class="nav-toggle-btn" onclick="toggleMainNav()" title="Toggle sidebar">☰</button>
@@ -171,7 +171,7 @@
         <a href="/admin/keys" id="nav-admin-link" class="nav-link {% if page == 'admin' %}active{% endif %}" style="display:none;">
           <span class="nav-icon">🔑</span><span class="nav-label">Admin</span>
         </a>
-        <!-- AGI Loop — one entry for every loop (switch loops on the page). Revealed by JS only for the owner account -->
+        <!-- AGI Loop — one entry for every loop (switch loops on the page). Revealed by JS for anyone signed in; each user sees only their own loops -->
         <a href="/agi-loop" id="nav-agi-loop-link" class="nav-link {% if (page or '').startswith('agi-loop') %}active{% endif %}" style="display:none;">
           <span class="nav-icon">♾</span><span class="nav-label">AGI Loop</span>
         </a>
@@ -681,15 +681,16 @@ select optgroup{color:${tm}!important}
             emailEl.title = d.user.email || '';
             section.style.display = 'block';
           }
+          // AGI Loop and its group chat are open to everyone signed in (each user has their own).
+          const agiLink = document.getElementById('nav-agi-loop-link');
+          if (agiLink) { agiLink.style.display = ''; _lastLoopHref(agiLink); }
+          const groupLink = document.getElementById('nav-group-chat-link');
+          if (groupLink) groupLink.style.display = '';
           // ── Admin-only sidebar tab (owner account) ──
           // Authoritative backend check (is_admin: ADMIN_EMAILS / ADMIN_USER_IDS).
           if (d.is_admin) {
             const adminLink = document.getElementById('nav-admin-link');
             if (adminLink) adminLink.style.display = '';
-            const agiLink = document.getElementById('nav-agi-loop-link');
-            if (agiLink) { agiLink.style.display = ''; _lastLoopHref(agiLink); }
-            const groupLink = document.getElementById('nav-group-chat-link');
-            if (groupLink) groupLink.style.display = '';
           }
         }
       }).catch(() => {});

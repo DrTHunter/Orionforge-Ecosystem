@@ -61,7 +61,8 @@ class SentenceEmbedder:
                 return
             try:
                 from sentence_transformers import SentenceTransformer
-                self._model = SentenceTransformer(self.model_name)
+                from src.memory.shared_encoder import shared_encoder
+                self._model = shared_encoder(self.model_name, SentenceTransformer)  # one copy per process
                 log.info("[agi_loop] field embedder: %s", self.model_name)
             except Exception as exc:
                 log.warning("[agi_loop] sentence embedder unavailable (%s) — using hashed fallback", exc)

@@ -122,7 +122,14 @@ def human_journal_path() -> str:
 
 
 def inbox_path() -> str:
-    """``data/shared/inbox.jsonl`` — unified agent-to-operator inbox."""
+    """``data/shared/inbox.jsonl`` — unified agent-to-operator inbox.
+
+    Each non-owner user has their own: ``data/users/<uid>/shared/inbox.jsonl``.
+    """
+    from src.request_context import scope_dir
+    mine = scope_dir("shared", create=True)
+    if mine is not None:
+        return str(mine / "inbox.jsonl")
     shared_dir()  # ensure exists
     return os.path.join(DATA_ROOT, "shared", "inbox.jsonl")
 

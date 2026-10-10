@@ -810,7 +810,7 @@ def test_create_and_delete_loops():
         check("purge: config and data erased", "night_owl" not in al.loop_ids()
               and not al.data_dir("night_owl").exists()
               and not al.CONFIG_FILE.with_name("agi_loop_night_owl.json").exists())
-        check("purge: daemon forgotten", al._daemons.get("night_owl") is None)
+        check("purge: daemon forgotten", al._daemons.get((None, "night_owl")) is None)
         check("purge: first archive untouched", (dest / "config.json").exists())
 
         listed = al.archived_loops()
@@ -840,6 +840,85 @@ def test_create_and_delete_loops():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def test_loops_are_per_user():
+    print("\n=== Loops are per user ===")
+    import src.agi_loop as al
+    from src.request_context import data_scope
+    tmp = Path(tempfile.mkdtemp())
+    orig = al.CONFIG_FILE, al.DATA_DIR, al.USERS_DIR
+    al.CONFIG_FILE = tmp / "config" / "agi_loop.json"
+    al.DATA_DIR = tmp / "data" / "orion" / "agi_loop"
+    al.USERS_DIR = tmp / "data" / "users"
+    al.CONFIG_FILE.parent.mkdir(parents=True)
+
+    def as_(uid):
+        return data_scope.set(uid)
+
+    cfg = LoopConfig()
+    cfg.agent = "aristotle"
+    try:
+        t = as_(None)
+        check("owner keeps the built-in loops", al.loop_ids()[:2] == ["supervisor", "k_os"])
+        al.create_loop("owners_own", cfg)
+        owner_shared = al.shared_dir()
+        data_scope.reset(t)
+
+        t = as_("alice")
+        check("a new user starts with no loops", al.loop_ids() == [] and al.default_loop() == "")
+        check("…and no built-ins", al.built_in() == {})
+        check("…can't reach the owner's loops", al.normalize_loop_id("supervisor") == ""
+              and al.normalize_loop_id("owners_own") == "")
+        try:
+            al.config_file("supervisor")
+            check("no loop, no config path", False)
+        except ValueError:
+            check("no loop, no config path", True)
+        al.create_loop("atlas", cfg)
+        check("a user's loop lives in their folder", al.config_file("atlas") == al.USERS_DIR / "alice" / "agi_loop" / "config" / "atlas.json"
+              and al.data_dir("atlas") == al.USERS_DIR / "alice" / "agi_loop" / "data" / "atlas")
+        check("their first loop is their default", al.default_loop() == "atlas" and al.normalize_loop_id(None) == "atlas")
+        check("a user may even call a loop elysia", al.create_loop("elysia", cfg) == "elysia"
+              and al.load_config("elysia").agent == "aristotle")
+        alice_shared = al.shared_dir()
+        a_obj = object()
+        al.set_daemon(a_obj, "atlas")
+        data_scope.reset(t)
+
+        t = as_("bob")
+        check("another user sees none of it", al.loop_ids() == [] and al.normalize_loop_id("atlas") == "")
+        check("…not even the daemon", al.get_daemon("atlas") is None)
+        al.create_loop("atlas", cfg)
+        b_obj = object()
+        al.set_daemon(b_obj, "atlas")
+        check("same loop name, separate loops", al.get_daemon("atlas") is b_obj
+              and al.config_file("atlas") != al.USERS_DIR / "alice" / "agi_loop" / "config" / "atlas.json")
+        check("separate rooms", al.shared_dir() not in (alice_shared, owner_shared))
+        al.delete_loop("atlas", archive=True)
+        check("archive is per user", [a["id"] for a in al.archived_loops()] == ["atlas"]
+              and al.archive_dir().is_relative_to(al.USERS_DIR / "bob"))
+        data_scope.reset(t)
+
+        t = as_("alice")
+        check("someone else's delete leaves yours alone", "atlas" in al.loop_ids()
+              and al.get_daemon("atlas") is a_obj and al.archived_loops() == [])
+        data_scope.reset(t)
+
+        t = as_(None)
+        check("the owner never sees users' loops", "atlas" not in al.loop_ids() and "owners_own" in al.loop_ids())
+        check("the registry keys by owner", (("alice", "atlas") in al.all_daemons())
+              and ("bob", "atlas") not in al.all_daemons())
+        check("users with loops are found for restarts", al.scopes_with_loops() == ["alice", "bob"])
+        data_scope.reset(t)
+        for bad in ("../x", "a/b", ""):
+            t = as_(bad)
+            check(f"a malformed id falls back to the owner ({bad!r})", al.owner() is None)
+            data_scope.reset(t)
+    finally:
+        al._daemons.clear()
+        al.CONFIG_FILE, al.DATA_DIR, al.USERS_DIR = orig
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_prediction()
     test_embedder()
@@ -853,6 +932,7 @@ if __name__ == "__main__":
     test_daemon_tasks_and_limits()
     test_multiple_loops()
     test_create_and_delete_loops()
+    test_loops_are_per_user()
     test_group_chat()
     test_long_messages()
     test_documents()

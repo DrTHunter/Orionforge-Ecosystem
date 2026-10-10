@@ -93,6 +93,7 @@ import contextvars
 # ── Per-request user identity (set by AuthMiddleware) ────────────
 # Lives in src/ so memory modules can see the user too.
 from src.request_context import current_user_id as _current_user_id, user_config_dir as _user_config_dir
+from src.request_context import data_scope as _data_scope
 
 # ── Project paths ────────────────────────────────────────────────
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -178,6 +179,7 @@ class _MCPAuthASGI:
             log.warning("[mcp] dir init failed for %s: %s", user_id[:8], exc)
         set_current_user(user_id)
         _current_user_id.set(user_id)
+        _data_scope.set(None if (user_id in ADMIN_USER_IDS or user_id in _ADMIN_IDS_SEEN) else user_id)
         await self.app(scope, receive, send)
 
 
@@ -431,6 +433,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 request.state.user = bridge_user
                 user_id = bridge_user.get("id", "") or "__bridge__"
                 _current_user_id.set(user_id)
+                _data_scope.set(None if _user_is_admin(bridge_user) else user_id)
                 try:
                     ensure_user_dirs(user_id)
                     seed_user_vault(user_id)
@@ -485,6 +488,8 @@ class AuthMiddleware(BaseHTTPMiddleware):
         # Record user activity for inactive-account cleanup
         user_id = request.state.user.get("id", "")
         _current_user_id.set(user_id or "__local__")
+        # The owner keeps the global inbox, memory tool vault and AGI loops; everyone else gets their own.
+        _data_scope.set(None if _user_is_admin(request.state.user) else (user_id or None))
         touch_user_activity(user_id)
 
         # Ensure per-user data directories exist (fast no-op after first login)
@@ -528,6 +533,58 @@ class AuthMiddleware(BaseHTTPMiddleware):
         return response
 
 
+class _PollETag:
+    """The endpoints pages poll every few seconds answer "unchanged" when nothing changed.
+
+    Each 200 JSON reply gets an ETag (a hash of its body) and ``Cache-Control: no-cache``;
+    the browser then re-asks with If-None-Match, and an unchanged body comes back as an
+    empty 304 that fetch() quietly turns into the cached 200. Page code sees the same data.
+    Innermost middleware, so the hash is of the plain body (before gzip).
+    """
+
+    PATHS = re.compile(r"^/api/(agi-loop/(status|conversation|events|world|predictions|ticks|journal|workbench"
+                       r"|door|tool-requests|loops|archive|config)|group-chat/(messages|slab)"
+                       r"|credits/balance|inbox/list)$")
+    _DROP = (b"etag", b"cache-control")
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["method"] != "GET" or not self.PATHS.match(scope["path"]):
+            return await self.app(scope, receive, send)
+        start, chunks = None, []
+
+        async def capture(message):
+            nonlocal start
+            if message["type"] == "http.response.start":
+                start = message
+                return
+            if message["type"] != "http.response.body":
+                return await send(message)
+            chunks.append(message.get("body", b""))
+            if message.get("more_body"):
+                return
+            body = b"".join(chunks)
+            if start["status"] != 200:
+                await send(start)
+                return await send({"type": "http.response.body", "body": body})
+            tag = ('W/"' + hashlib.sha1(body).hexdigest()[:24] + '"').encode()
+            headers = [(k, v) for k, v in start.get("headers", []) if k.lower() not in self._DROP]
+            headers += [(b"etag", tag), (b"cache-control", b"private, no-cache")]
+            asked = b",".join(v for k, v in scope.get("headers", []) if k.lower() == b"if-none-match")
+            if tag in (t.strip() for t in asked.split(b",")):
+                headers = [(k, v) for k, v in headers if k.lower() not in (b"content-length", b"content-type")]
+                await send({"type": "http.response.start", "status": 304, "headers": headers})
+                return await send({"type": "http.response.body", "body": b""})
+            await send({"type": "http.response.start", "status": 200, "headers": headers})
+            await send({"type": "http.response.body", "body": body})
+
+        await self.app(scope, receive, capture)
+
+
+# Added first, so it sits innermost (Starlette wraps each later middleware around it).
+app.add_middleware(_PollETag)
 app.add_middleware(AuthMiddleware)
 
 # ── CSRF protection ─────────────────────────────────────────────
@@ -3640,6 +3697,12 @@ from src.agi_loop import (
     DEFAULT_LOOP as _DEFAULT_LOOP,
     LOOP_DEFAULT_AGENTS as _LOOP_DEFAULT_AGENTS,
     LoopConfig,
+    all_daemons as _all_loop_daemons,
+    built_in as _loop_built_in,
+    default_loop as _default_loop,
+    owner as _loop_owner,
+    scopes_with_loops as _loop_scopes,
+    shared_dir as _loop_shared_dir,
     archived_loops as _archived_loops,
     LoopDaemon,
     config_file as _loop_config_file,
@@ -3662,10 +3725,22 @@ _loop_embedder = _LoopEmbedder()
 
 
 class _OrionLoopHost:
-    """Connects the loop to the persona prompt pipeline, connections, metering and tool registry."""
+    """Connects the loop to the persona prompt pipeline, connections, metering and tool registry.
 
-    def __init__(self, loop_id: str = _DEFAULT_LOOP):
+    ``owner`` is the signed-in user whose loop this is (None for the owner's own loops). A user's
+    loop pays for platform-key calls from their credits, at the same rate as chat; their own
+    API keys cost them nothing here.
+    """
+
+    def __init__(self, loop_id: str = _DEFAULT_LOOP, owner: str | None = None):
         self.loop_id = loop_id
+        self.owner = owner
+
+    def _out_of_credits(self):
+        d = _get_loop_daemon(self.loop_id)
+        if d is not None and d.running:
+            d.event("credits", "out of credits — the loop went to sleep")
+            d.request_stop("out of credits")
 
     def prepare(self, agent: str, view: str):
         # dynamic_last: the system message stays byte-stable tick to tick (cacheable); this tick's
@@ -3777,6 +3852,13 @@ class _OrionLoopHost:
         if tools:
             payload["tools"] = _prepare_tools_for_connection(tools, conn)
 
+        # A user's loop pays for every call that isn't on their own key, so it can never run
+        # free on the owner's connections.
+        billed = bool(self.owner and not str(conn.get("id", "")).startswith("__userkey_"))
+        if billed and get_user_credits(self.owner) <= 0:
+            self._out_of_credits()
+            raise RuntimeError("Out of credits. Add credits in the Store, then wake the loop.")
+
         async with httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(url, json=payload, headers=headers)
         if resp.status_code >= 400:
@@ -3805,13 +3887,24 @@ class _OrionLoopHost:
         tokens = usage.get("total_tokens") or (usage.get("prompt_tokens", 0) + usage.get("completion_tokens", 0))
         if not tokens:  # some local servers omit usage; estimate so energy still drains
             tokens = (len(json.dumps(messages)) + len(json.dumps(message))) // 4
+        if billed:
+            try:
+                credit_cost = estimate_llm_credit_cost_safe(cost, int(tokens))
+                balance = get_user_credits(self.owner)
+                charge = min(credit_cost, balance)
+                if charge > 0:
+                    deduct_user_credits(self.owner, charge, f"agi_loop:{self.loop_id}:{model}:{int(tokens)}tok")
+                if credit_cost > balance:
+                    self._out_of_credits()
+            except Exception as exc:
+                log.warning("[agi_loop] credit charge failed for %s: %s", self.loop_id, exc)
         return _LoopCompletion(message=message, finish_reason=choice.get("finish_reason") or "stop",
                                tokens=int(tokens), cost=cost, model=data.get("model", model),
                                prompt_tokens=int(usage.get("prompt_tokens") or 0), cached_tokens=cached)
 
     def call_tool(self, agent: str, name: str, args: dict) -> str:
         from src.tools.registry import execute_tool
-        return execute_tool(name, args, agent_name=agent)
+        return execute_tool(name, args, agent_name=agent, user_id=self.owner or "")
 
     def after_response(self, agent: str, text: str) -> str:
         _extract_and_save_memories(agent, text)
@@ -3822,23 +3915,46 @@ class _OrionLoopHost:
         # The inbox is shared. A task can be addressed with "to"; unaddressed ones belong to the original loop.
         def mine(e: dict) -> bool:
             to = (e.get("to") or "").strip().lower()
-            return to == self.loop_id if to else self.loop_id == _DEFAULT_LOOP
+            return to == self.loop_id if to else self.loop_id == _default_loop()
         return [e for e in _read_all() if e.get("type") == "task" and e.get("status") == "pending" and mine(e)]
 
 
 from src.agi_loop.groupchat import GroupChat as _GroupChat
 
-# The room the loops share. Delivery reaches every loop's door, running or not.
-_group_chat = _GroupChat(_loop_data_dir(_DEFAULT_LOOP).parent / "group_chat.jsonl",
-                         lambda: {lid: _loop_daemon(loop=lid) for lid in _loop_ids()})
+# The room each owner's loops share (the owner's, and one per signed-in user). Delivery
+# reaches every one of that owner's loops' doors, running or not.
+_group_chats: dict = {}
+
+
+def _group_chat_for() -> "_GroupChat":
+    key = _loop_owner()
+    room = _group_chats.get(key)
+    if room is None:
+        def loops(key=key):
+            tok = _data_scope.set(key)
+            try:
+                return {lid: _loop_daemon(loop=lid) for lid in _loop_ids()}
+            finally:
+                _data_scope.reset(tok)
+        room = _group_chats[key] = _GroupChat(_loop_shared_dir() / "group_chat.jsonl", loops)
+    return room
+
+
+def _post_in_scope(scope, sender: str, name: str, text: str):
+    tok = _data_scope.set(scope)
+    try:
+        return _group_chat_for().post(sender, name, text)
+    finally:
+        _data_scope.reset(tok)
 
 from src.agi_loop.watchdog import CHECK_EVERY as _WATCH_EVERY, Watchdog as _Watchdog
 
 # A witness outside every mind: when a running loop goes flat, it says so once, in the room.
 # Only loops that exist in this process are watched; nothing is created to be watched.
+# Watched across every owner; each alert goes to the room of the loop's owner.
 _watchdog = _Watchdog(
-    lambda: {lid: d for lid in _loop_ids() if (d := _get_loop_daemon(lid)) is not None},
-    lambda lid, text: _group_chat.post("watchdog", "watchdog", text),
+    lambda: {f"{o or ''}|{lid}": d for (o, lid), d in _all_loop_daemons().items()},
+    lambda key, text: _post_in_scope(key.split("|", 1)[0] or None, "watchdog", "watchdog", text),
 )
 
 
@@ -3854,10 +3970,14 @@ async def _watch_loops():
 def _loop_daemon(fresh: bool = False, loop: str = _DEFAULT_LOOP) -> LoopDaemon:
     """The loop for ``loop`` (one daemon per loop id). ``fresh`` rebuilds it from the saved config (only when stopped)."""
     loop = _normalize_loop_id(loop)
+    if not loop:
+        raise ValueError("No loop yet")
     d = _get_loop_daemon(loop)
     if d is None or (fresh and not d.running):
-        d = LoopDaemon(_OrionLoopHost(loop), _load_loop_config(loop), _loop_data_dir(loop),
-                       embedder=_loop_embedder, loop_id=loop, group=_group_chat)
+        owner = _loop_owner()
+        d = LoopDaemon(_OrionLoopHost(loop, owner), _load_loop_config(loop), _loop_data_dir(loop),
+                       embedder=_loop_embedder, loop_id=loop, group=_group_chat_for(),
+                       linux=owner is None)   # Linux machines are the owner's only
         _set_loop_daemon(d, loop)
     return d
 
@@ -3892,16 +4012,50 @@ def _prepare_message(text: str, files: list, daemons: list, label: str) -> str:
 async def _autostart_loops(ready=None):
     if ready is not None:
         await asyncio.to_thread(ready.wait, 600)
-    for lid in _loop_ids():
+    # The owner's loops, then each signed-in user's, started inside that user's identity so the
+    # loop task keeps their scope, profile, keys and credits for as long as it runs.
+    for scope in [None] + _loop_scopes():
+        tok_scope = _data_scope.set(scope)
+        tok_user = _current_user_id.set(scope or "__local__")
         try:
-            if not (_loop_data_dir(lid) / "autostart").exists():
-                continue
-            d = _loop_daemon(True, lid)
-            if not d.running:
-                d.start()
-                log.info("[agi_loop] %s came back after a restart", lid)
-        except Exception as exc:
-            log.warning("[agi_loop] could not bring %s back: %s", lid, exc)
+            for lid in _loop_ids():
+                try:
+                    if not (_loop_data_dir(lid) / "autostart").exists():
+                        continue
+                    if scope and _awake_elsewhere(lid):
+                        continue
+                    d = _loop_daemon(True, lid)
+                    if not d.running:
+                        d.start()
+                        log.info("[agi_loop] %s came back after a restart", lid if not scope else f"{scope[:8]}/{lid}")
+                except Exception as exc:
+                    log.warning("[agi_loop] could not bring %s back: %s", lid, exc)
+        finally:
+            _current_user_id.reset(tok_user)
+            _data_scope.reset(tok_scope)
+
+
+# Signed-in users' limits: a few loops each, one awake at a time (they all share this server).
+_USER_MAX_LOOPS = 3
+
+
+def _awake_elsewhere(lid: str) -> str:
+    """For a user's loop: the id of another of their loops that's awake, or ""."""
+    if _loop_owner() is None:
+        return ""
+    for other in _loop_ids():
+        d = _get_loop_daemon(other)
+        if other != lid and d is not None and d.running:
+            return other
+    return ""
+
+
+def _one_awake_error(lid: str):
+    other = _awake_elsewhere(lid)
+    if other:
+        return JSONResponse({"ok": False, "reason": f"Only one of your loops can be awake at a time. "
+                                                    f"Stop '{other}' first."}, 409)
+    return None
 
 
 def _lid(request: Request) -> str:
@@ -3909,49 +4063,58 @@ def _lid(request: Request) -> str:
 
 
 def _check_agi_loop_access(request: Request) -> bool:
-    """AGI loop page/APIs are owner-only on hosted (auth-enabled) deploys.
-
-    Local single-user mode (auth disabled) keeps full access, since there is
-    no logged-in user to check against ADMIN_EMAILS / ADMIN_USER_IDS.
-    """
+    """The AGI loop is open to every signed-in user, each in their own loops (the
+    middleware's data scope); local single-user mode (auth disabled) is the owner."""
     if not get_auth_config().get("auth_enabled", False):
         return True
-    return _check_admin(request)
+    return bool(getattr(request.state, "user", None))
 
 
-_AGI_LOOP_DENIED = {"error": "Admin access required"}
+_AGI_LOOP_DENIED = {"error": "Sign in to use the AGI loop"}
+# Routes that work before a user has any loop: the page, the loop list/create, the archive, the room.
+_LOOP_FREE_PATHS = ("/agi-loop", "/api/agi-loop/loops", "/api/agi-loop/archive", "/group-chat", "/api/group-chat")
 
 
 def _agi_denied(request: Request):
-    return None if _check_agi_loop_access(request) else JSONResponse(_AGI_LOOP_DENIED, status_code=403)
+    if not _check_agi_loop_access(request):
+        return JSONResponse(_AGI_LOOP_DENIED, status_code=403)
+    path = request.url.path
+    if not _loop_ids() and not any(path == p or path.startswith(p + "/") for p in _LOOP_FREE_PATHS):
+        return JSONResponse({"ok": False, "error": "No loop yet", "reason": "Create a loop first"}, status_code=404)
+    return None
 
 
 @app.get("/agi-loop", response_class=HTMLResponse)
 async def page_agi_loop(request: Request):
     if denied := _agi_denied(request):
         return denied
-    d = _loop_daemon(loop=_lid(request))
+    lid = _lid(request)
+    d = _loop_daemon(loop=lid) if lid else None
     connections = [
         {"id": c["id"], "name": c.get("name", c["id"]), "provider": c.get("provider", ""), "models": c.get("models", [])}
-        for c in _load_connections().get("connections", []) if c.get("enabled")
+        for c in _load_connections().get("connections", [])
+        # Users see the platform's connections and their own keys, never the owner's private ones.
+        if c.get("enabled") and (_loop_owner() is None or c.get("platform_hosted"))
     ]
     for provider, key in (_load_settings().get("api_keys") or {}).items():
         if key and provider in _USER_PROVIDER_URLS:
             try:
-                conn = _resolve_connection(f"__userkey_{provider}", d.config.agent)
+                conn = _resolve_connection(f"__userkey_{provider}", d.config.agent if d else "")
             except Exception:
                 conn = None
             if conn:
                 connections.append({"id": conn["id"], "name": conn["name"], "provider": provider,
                                     "models": conn.get("models", [])})
     return templates.TemplateResponse(request, "agi_loop.html", {
-        "page": "agi-loop" if _lid(request) == _DEFAULT_LOOP else f"agi-loop-{_lid(request)}",
-        "loop": _lid(request),
+        "page": "agi-loop" if lid == _default_loop() else f"agi-loop-{lid}",
+        "loop": lid,
         "loops": _loop_ids(),
-        "built_in_loops": list(_LOOP_DEFAULT_AGENTS),
-        "linux_user": _loop_linux_user(_lid(request)),
+        "built_in_loops": list(_loop_built_in()),
+        "is_owner": _loop_owner() is None,
+        "max_loops": _USER_MAX_LOOPS,
+        "linux_user": _loop_linux_user(lid),
         "agents": _list_agents(),
-        "config": d.config.to_dict(),
+        "config": (d.config if d else LoopConfig()).to_dict(),
         "connections": connections,
     })
 
@@ -3989,6 +4152,8 @@ async def api_agi_loop_config_save(request: Request):
 async def api_agi_loop_start(request: Request):
     if denied := _agi_denied(request):
         return denied
+    if busy := _one_awake_error(_lid(request)):
+        return busy
     d = _loop_daemon(True, _lid(request))
     if d.running:
         return JSONResponse({"ok": False, "reason": "Already running"}, 409)
@@ -4000,7 +4165,7 @@ async def api_agi_loop_start(request: Request):
 async def api_agi_loop_list(request: Request):
     if denied := _agi_denied(request):
         return denied
-    return JSONResponse({"loops": [{"id": lid, "agent": _load_loop_config(lid).agent, "built_in": lid in _LOOP_DEFAULT_AGENTS}
+    return JSONResponse({"loops": [{"id": lid, "agent": _load_loop_config(lid).agent, "built_in": lid in _loop_built_in()}
                                    for lid in _loop_ids()]})
 
 
@@ -4015,13 +4180,16 @@ async def api_agi_loop_create(request: Request):
     cfg = LoopConfig.from_dict(body.get("config") if isinstance(body.get("config"), dict) else {})
     if cfg.agent not in _list_agents():
         return JSONResponse({"ok": False, "reason": f"No agent called '{cfg.agent}'"}, 400)
+    if _loop_owner() and len(_loop_ids()) >= _USER_MAX_LOOPS:
+        return JSONResponse({"ok": False, "reason": f"You can have up to {_USER_MAX_LOOPS} loops. "
+                                                    "Delete or archive one first."}, 400)
     try:
         lid = _create_loop(str(body.get("id") or ""), cfg)
     except ValueError as exc:
         return JSONResponse({"ok": False, "reason": str(exc)}, 400)
     d = _loop_daemon(True, lid)
     started = False
-    if body.get("start"):
+    if body.get("start") and not _awake_elsewhere(lid):
         try:
             d.start()
             started = True
@@ -4054,7 +4222,7 @@ async def api_agi_loop_describe(loop_id: str, request: Request):
     d = _get_loop_daemon(loop_id)
     return JSONResponse({
         "ok": True, "id": loop_id, "agent": _load_loop_config(loop_id).agent,
-        "built_in": loop_id in _LOOP_DEFAULT_AGENTS, "running": bool(d and d.running),
+        "built_in": loop_id in _loop_built_in(), "running": bool(d and d.running),
         "linux_user": _loop_linux_user(loop_id),
         **await asyncio.to_thread(_loop_footprint, loop_id),
     })
@@ -4075,7 +4243,7 @@ async def api_agi_loop_delete(loop_id: str, request: Request):
     mode = body.get("mode") or "archive"
     if mode not in ("archive", "purge"):
         return JSONResponse({"ok": False, "reason": "mode must be archive or purge"}, 400)
-    if loop_id in _LOOP_DEFAULT_AGENTS:
+    if loop_id in _loop_built_in():
         return JSONResponse({"ok": False, "reason": f"'{loop_id}' is a built-in loop and can't be deleted"}, 400)
     d = _get_loop_daemon(loop_id)
     if d is not None and (d.running or (d.task and not d.task.done())):
@@ -4095,7 +4263,7 @@ async def api_agi_loop_delete(loop_id: str, request: Request):
     except OSError as exc:
         return JSONResponse({"ok": False, "reason": f"Couldn't move its files: {exc}"}, 500)
     with contextlib.suppress(Exception):
-        _group_chat.post("watchdog", "watchdog",
+        _group_chat_for().post("watchdog", "watchdog",
                          f"The loop '{loop_id}' was {'archived' if dest else 'deleted'} by the operator.")
     return JSONResponse({"ok": True, "id": loop_id, "mode": mode,
                          "archived_to": f"{dest.parent.name}/{dest.name}" if dest else None})
@@ -4130,6 +4298,9 @@ async def api_agi_loop_restore(archive_name: str, request: Request):
     body = await request.json()
     if not isinstance(body, dict):
         body = {}
+    if _loop_owner() and len(_loop_ids()) >= _USER_MAX_LOOPS:
+        return JSONResponse({"ok": False, "reason": f"You can have up to {_USER_MAX_LOOPS} loops. "
+                                                    "Delete or archive one first."}, 400)
     try:
         lid = await asyncio.to_thread(_restore_loop, archive_name, str(body.get("id") or "") or None)
     except ValueError as exc:
@@ -4141,14 +4312,14 @@ async def api_agi_loop_restore(archive_name: str, request: Request):
     with contextlib.suppress(OSError):
         d.autostart_file.unlink()
     started = False
-    if body.get("start"):
+    if body.get("start") and not _awake_elsewhere(lid):
         try:
             d.start()
             started = True
         except Exception as exc:
             log.warning("[agi_loop] restored loop %s didn't start: %s", lid, exc)
     with contextlib.suppress(Exception):
-        _group_chat.post("watchdog", "watchdog", f"The loop '{lid}' was restored from the archive.")
+        _group_chat_for().post("watchdog", "watchdog", f"The loop '{lid}' was restored from the archive.")
     return JSONResponse({"ok": True, "id": lid, "started": started})
 
 
@@ -4307,6 +4478,8 @@ async def api_agi_loop_workbench_file(request: Request, path: str = Query(...)):
 async def api_agi_loop_linux(view: str, request: Request, lines: int = Query(300), path: str = Query("")):
     if denied := _agi_denied(request):
         return denied
+    if _loop_owner() is not None:
+        return JSONResponse({"error": "Linux machines aren't available for your loops yet"}, status_code=403)
     if view not in ("log", "tree", "file", "stats"):
         return JSONResponse({"ok": False, "reason": "Unknown view"}, 404)
     linux = _loop_daemon(loop=_lid(request)).linux
@@ -4323,7 +4496,7 @@ async def api_agi_loop_linux(view: str, request: Request, lines: int = Query(300
 # Tool requests: one line from a mind ("I want a tool that…"), shared by every loop. The file is
 # append-only — closing a request appends a status line rather than rewriting the record.
 def _tool_requests_path() -> Path:
-    return _loop_data_dir(_DEFAULT_LOOP).parent / "tool_requests.jsonl"
+    return _loop_shared_dir() / "tool_requests.jsonl"
 
 
 def _read_tool_requests() -> list[dict]:
@@ -4379,7 +4552,7 @@ async def api_group_chat_messages(request: Request, limit: int = Query(200)):
     for lid in _loop_ids():
         d = _loop_daemon(loop=lid)
         loops.append({"id": lid, "agent": d.config.agent, "running": d.running})
-    return JSONResponse({"messages": _group_chat.read(limit), "loops": loops})
+    return JSONResponse({"messages": _group_chat_for().read(limit), "loops": loops})
 
 
 @app.get("/api/group-chat/slab")
@@ -4387,7 +4560,7 @@ async def api_group_chat_slab(request: Request, limit: int = Query(200), since: 
     """The shared slab, read-only. Entries are written by the loops and never edited."""
     if denied := _agi_denied(request):
         return denied
-    return JSONResponse({"entries": _group_chat.slab.read(limit, since)})
+    return JSONResponse({"entries": _group_chat_for().slab.read(limit, since)})
 
 
 @app.post("/api/group-chat/send")
@@ -4403,7 +4576,9 @@ async def api_group_chat_send(request: Request):
                                        [_loop_daemon(loop=lid) for lid in _loop_ids()], "group")
     except ValueError as exc:
         return JSONResponse({"ok": False, "reason": str(exc)}, 400)
-    return JSONResponse({"ok": True, "message": _group_chat.post("operator", body.get("sender") or "Operator", text)})
+    me = "Operator" if _loop_owner() is None else (
+        ((getattr(request.state, "user", None) or {}).get("email") or "you").split("@")[0])
+    return JSONResponse({"ok": True, "message": _group_chat_for().post("operator", body.get("sender") or me, text)})
 
 
 # ── Inbox API ────────────────────────────────────────────────────
