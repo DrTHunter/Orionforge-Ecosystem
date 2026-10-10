@@ -219,6 +219,12 @@
   .wz-review dt { color: var(--dim); font-weight: 700; } .wz-review dd { margin: 0; word-break: break-word; }
   .wz-card:disabled { opacity: .45; cursor: not-allowed; border-color: var(--bd); }
   .wz-card.danger.on { border-color: var(--bad); background: rgba(239,68,68,.1); }
+  /* loop switcher chips: the loop you're on is filled in */
+  .al-loopchip { text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+  .al-loopchip:hover { border-color: var(--acc2); color: var(--tx); }
+  .al-loopchip.on { background: var(--acc); border-color: var(--acc); color: #fff; font-weight: 700;
+    box-shadow: 0 0 0 3px rgba(99,102,241,.18), 0 4px 14px rgba(99,102,241,.35); }
+  .al-loopchip.on:hover { color: #fff; }
   /* loops tab */
   .lp-tools { display: flex; gap: .4rem; }
   .lp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(230px, 100%), 1fr)); gap: .7rem; }
@@ -258,8 +264,9 @@
       <div class="al-sub">A continuously running inner world &mdash; it senses, predicts, attends, and acts between conversations.</div>
     </div>
     <div class="al-row">
-      {% for l in loops %}<a class="al-chip" href="/agi-loop?loop={{ l }}" style="text-decoration:none;{% if l == loop %}border-color:var(--acc);color:var(--acc);font-weight:700;{% endif %}">{{ l }}</a>{% endfor %}
-      <span class="al-chip" id="hdr-agent">{{ config.agent }}</span>
+      {# Inside a for, Jinja's `loop` is the loop counter, so keep the page's loop id under another name. #}
+      {% set current_loop = loop %}
+      {% for l in loops %}<a class="al-chip al-loopchip{% if l == current_loop %} on{% endif %}" href="/agi-loop?loop={{ l }}"{% if l == current_loop %} id="hdr-loop" aria-current="page" title="Agent: {{ config.agent }}"{% else %} title="Switch to the {{ l }} loop"{% endif %}>{{ l }}</a>{% endfor %}
       <span class="al-chip" id="hdr-model">model: {{ config.model or 'profile default' }}</span>
       <span class="al-pill ph-idle" id="hdr-phase"><span class="al-dot"></span><span id="hdr-phase-text">idle</span></span>
     </div>
@@ -817,7 +824,7 @@ async function loadStatus() {
   const phase = s.paused && s.running ? 'paused' : (s.phase || 'idle');
   $('hdr-phase').className = 'al-pill ph-' + phase;
   $('hdr-phase-text').textContent = phase + (s.resting ? ' (rest)' : '');
-  $('hdr-agent').textContent = s.agent;
+  if ($('hdr-loop')) $('hdr-loop').title = 'Agent: ' + s.agent;
   $('hdr-model').textContent = 'model: ' + s.model;
   $('v-stage').textContent = s.stage || (s.running ? '—' : 'off');
   $('v-tick').textContent = s.tick;

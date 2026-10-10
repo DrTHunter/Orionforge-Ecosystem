@@ -11774,7 +11774,12 @@ def test_agi_loop_preamble_and_linux():
     check("…highlighted on any loop's page", "(page or '').startswith('agi-loop')" in base)
     check("…reopens the last loop", "_lastLoopHref(" in base and "agiLoopLast" in base)
     loop_page_nav = (Path(__file__).resolve().parent.parent / "web" / "templates" / "agi_loop.html").read_text(encoding="utf-8")
-    check("loop page switches loops with its chips", "{% for l in loops %}<a class=\"al-chip\" href=\"/agi-loop?loop={{ l }}\"" in loop_page_nav)
+    check("loop page switches loops with its chips", "{% for l in loops %}<a class=\"al-chip al-loopchip" in loop_page_nav
+          and 'href="/agi-loop?loop={{ l }}"' in loop_page_nav)
+    check("…the active loop's chip is highlighted", "{% if l == current_loop %} on{% endif %}" in loop_page_nav
+          and "{% set current_loop = loop %}" in loop_page_nav
+          and ".al-loopchip.on {" in loop_page_nav)
+    check("…no separate agent bubble", 'id="hdr-agent"' not in loop_page_nav)
     check("loop page remembers the loop", "localStorage.setItem('agiLoopLast', LOOP_ID)" in loop_page_nav)
     check("nav has no links to removed loops", "loop=madara" not in base and "loop=orion" not in base)
     loop_page = (web / "agi_loop.html").read_text(encoding="utf-8")
