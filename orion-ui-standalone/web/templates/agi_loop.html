@@ -219,6 +219,14 @@
   .wz-review dt { color: var(--dim); font-weight: 700; } .wz-review dd { margin: 0; word-break: break-word; }
   .wz-card:disabled { opacity: .45; cursor: not-allowed; border-color: var(--bd); }
   .wz-card.danger.on { border-color: var(--bad); background: rgba(239,68,68,.1); }
+  /* a user's Linux box */
+  .bx-sizes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .6rem; margin: .75rem 0; }
+  @media (max-width: 640px) { .bx-sizes { grid-template-columns: minmax(0, 1fr); } }
+  .bx-row { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: .5rem 0; font-size: .82rem; }
+  .bx-row input { width: 6rem; }
+  .bx-warn { color: var(--warn); font-size: .76rem; min-height: 1rem; }
+  .bx-price { font-size: .82rem; color: var(--mu); }
+  .bx-price b { color: var(--tx); }
   /* loop switcher chips: the loop you're on is filled in */
   .al-loopchip { text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
   .al-loopchip:hover { border-color: var(--acc2); color: var(--tx); }
@@ -289,7 +297,7 @@
     <button class="al-tab" data-tab="predictions">Predictions</button>
     <button class="al-tab" data-tab="processes">Processes</button>
     <button class="al-tab" data-tab="workbench">Workbench</button>
-    {% if is_owner %}<button class="al-tab" data-tab="linux">Linux</button>{% endif %}
+    <button class="al-tab" data-tab="linux">Linux</button>
     <button class="al-tab" data-tab="inbox">Inbox <span class="al-badge zero" id="inbox-tab-badge">0</span></button>
     <button class="al-tab" data-tab="journal">Journal</button>
     <button class="al-tab" data-tab="ticks">Ticks</button>
@@ -299,7 +307,7 @@
   <select class="al-tabselect" id="al-tabselect" aria-label="Section">
     <option value="overview">Overview</option><option value="world">Field</option>
     <option value="predictions">Predictions</option><option value="processes">Processes</option>
-    <option value="workbench">Workbench</option>{% if is_owner %}<option value="linux">Linux</option>{% endif %}<option value="inbox">Inbox</option>
+    <option value="workbench">Workbench</option><option value="linux">Linux</option><option value="inbox">Inbox</option>
     <option value="journal">Journal</option><option value="ticks">Ticks</option>
     <option value="config">Configuration</option>
     <option value="loops">Loops</option>
@@ -456,6 +464,9 @@
 
   <!-- ══ Linux (the agent's own machine, read-only) ══════════════ -->
   <section class="al-panel" id="panel-linux">
+    {% if not is_owner %}
+    <div class="al-card" id="bx-card" style="margin-bottom:1rem"><div class="al-empty">Loading…</div></div>
+    {% endif %}
     <div class="lx-strip">
       <span><span class="lx-dot" id="lx-dot"></span><span id="lx-state">checking…</span></span>
       <span id="lx-disk"></span><span id="lx-mem"></span><span id="lx-up"></span>
@@ -467,7 +478,7 @@
     <div id="lx-off" class="al-card" style="display:none"><div class="al-empty" id="lx-off-msg"></div></div>
     <div id="lx-pane-files" class="lx-files">
       <div class="al-card">
-        <h3>Her home <button class="al-btn al-btn-sm" onclick="lxLoadTree()">&#8635;</button></h3>
+        <h3>{{ 'Her home' if is_owner else 'Its home' }} <button class="al-btn al-btn-sm" onclick="lxLoadTree()">&#8635;</button></h3>
         <p class="hint">/home/{{ linux_user }} · folders marked <span class="lx-node" style="display:inline;padding:0"><span class="rd">no README</span></span> haven't been explained yet.</p>
         <div class="lx-tree" id="lx-tree"><div class="al-empty">Loading…</div></div>
       </div>
@@ -478,7 +489,7 @@
     </div>
     <div id="lx-pane-terminal" style="display:none">
       <div class="al-row" style="justify-content:space-between;margin-bottom:.6rem;font-size:.76rem;color:var(--mu)">
-        <span>Every command she runs, live. Read-only.</span>
+        <span>Every command {{ 'she runs' if is_owner else 'it runs' }}, live. Read-only.</span>
         <label style="cursor:pointer"><input type="checkbox" id="lx-follow" checked> follow</label>
       </div>
       <div class="lx-term" id="lx-term">Loading…</div>
@@ -1144,7 +1155,98 @@ function lxOffline(r) {
   $('lx-off-msg').textContent = r.reason || 'Unreachable';
   $('lx-pane-files').style.display = 'none'; $('lx-pane-terminal').style.display = 'none';
 }
+/* A user's Linux box: make one, see what it costs, resize, delete */
+const BX = {owner: {{ is_owner|tojson }}, data: null, mem: 512};
+function bxCredits(n) { return (+n).toLocaleString(undefined, {maximumFractionDigits: 1}); }
+function bxPrice(mem, disk) {
+  const p = BX.data.prices;
+  return `<b>≈ ${bxCredits(p.memory[mem])} credits an hour</b> while the loop is awake, `
+    + `plus <b>${bxCredits(p.disk_per_gb_day * disk)} a day</b> for the disk while the box exists.`;
+}
+function bxDiskWarn(inputId, warnId) {
+  const v = +$(inputId).value, p = BX.data.prices;
+  $(warnId).textContent = v > p.roomy_disk_gb
+    ? `You won't need more than ${p.roomy_disk_gb} GB until it fills up. Disks can grow later without a restart, so start small.`
+    : '';
+}
+function bxRender() {
+  const d = BX.data, card = $('bx-card');
+  if (!card || !d) return;
+  const p = d.prices;
+  if (!d.enabled) {
+    card.innerHTML = '<h3>Linux box</h3><p class="hint" style="margin:0">Linux boxes aren\'t switched on yet.</p>';
+    return;
+  }
+  if (!d.box) {
+    BX.mem = BX.mem || p.default_memory;
+    card.innerHTML = '<h3>Give this loop a Linux machine</h3>'
+      + '<p class="hint" style="margin-top:0">A real Ubuntu box of its own: it can install things, run code and build projects. '
+      + 'It runs while the loop is awake and stops when it sleeps, and it\'s paid from your credits.</p>'
+      + '<div class="bx-sizes">' + Object.keys(p.memory).map(m => `<button type="button" class="wz-card${+m === BX.mem ? ' on' : ''}" onclick="BX.mem=${m};bxRender()">`
+        + `<b>${m >= 1024 ? m / 1024 + ' GB' : m + ' MB'} memory${+m === p.default_memory ? ' · recommended' : ''}</b>`
+        + `<span>≈ ${bxCredits(p.memory[m])} credits an hour while awake${+m === 512 ? '. Plenty for scripts, git and small projects.' : +m === 1024 ? '. For bigger installs and builds.' : '. For heavy builds.'}</span></button>`).join('') + '</div>'
+      + `<div class="bx-row">Disk <input class="al-input" id="bx-disk" type="number" min="1" max="${p.max_disk_gb}" value="${p.default_disk_gb}" oninput="bxDiskWarn('bx-disk','bx-disk-warn');$('bx-new-price').innerHTML=bxPrice(BX.mem, +this.value||1)"> GB</div>`
+      + '<div class="bx-warn" id="bx-disk-warn"></div>'
+      + `<p class="bx-price" id="bx-new-price">${bxPrice(BX.mem, p.default_disk_gb)}</p>`
+      + '<button class="al-btn b-acc" id="bx-make" onclick="bxCreate()">Make the box</button> <span class="wz-err" id="bx-err"></span>';
+    return;
+  }
+  const b = d.box;
+  card.innerHTML = `<h3>Linux box <span class="lp-state${b.state === 'started' ? ' run' : ''}">${b.state === 'started' ? 'running' : 'asleep'}</span></h3>`
+    + `<p class="bx-price" style="margin-top:0">${b.memory_mb >= 1024 ? b.memory_mb / 1024 + ' GB' : b.memory_mb + ' MB'} memory · ${b.disk_gb} GB disk · `
+    + `<b>≈ ${bxCredits(b.credits_per_hour)} credits an hour</b> while awake, <b>${bxCredits(b.disk_credits_per_day)} a day</b> for the disk. `
+    + 'It wakes and sleeps with the loop.</p>'
+    + '<div class="bx-row">Memory <select class="al-input" id="bx-mem" style="width:auto">'
+    + Object.keys(p.memory).map(m => `<option value="${m}"${+m === b.memory_mb ? ' selected' : ''}>${m >= 1024 ? m / 1024 + ' GB' : m + ' MB'} · ≈ ${bxCredits(p.memory[m])}/hour</option>`).join('')
+    + '</select><button class="al-btn al-btn-sm" onclick="bxResize({memory_mb: +$(\'bx-mem\').value})">Change (restarts it)</button></div>'
+    + `<div class="bx-row">Disk <input class="al-input" id="bx-grow" type="number" min="${b.disk_gb + 1}" max="${p.max_disk_gb}" value="${b.disk_gb + 1}" oninput="bxDiskWarn('bx-grow','bx-grow-warn')"> GB`
+    + '<button class="al-btn al-btn-sm" onclick="bxResize({disk_gb: +$(\'bx-grow\').value})">Grow the disk</button><span class="al-dim">disks only grow</span></div>'
+    + '<div class="bx-warn" id="bx-grow-warn"></div>'
+    + '<div class="bx-row"><button class="al-btn al-btn-sm b-danger" onclick="bxDelete()">Delete the box and its disk</button><span class="wz-err" id="bx-err"></span></div>';
+}
+async function bxLoad() {
+  BX.data = await api('/api/agi-loop/box');
+  bxRender();
+  return !!(BX.data && BX.data.box);
+}
+async function bxCreate() {
+  const disk = +$('bx-disk').value || 1;
+  if (!confirm(`Make a ${BX.mem >= 1024 ? BX.mem / 1024 + ' GB' : BX.mem + ' MB'} box with a ${disk} GB disk? `
+      + `About ${bxCredits(BX.data.prices.memory[BX.mem])} credits an hour while the loop is awake, plus `
+      + `${bxCredits(BX.data.prices.disk_per_gb_day * disk)} a day for the disk.`)) return;
+  $('bx-make').disabled = true; $('bx-make').textContent = 'Making it… (about half a minute)';
+  const r = await api('/api/agi-loop/box/create', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({memory_mb: BX.mem, disk_gb: disk})});
+  if (!r.ok) { $('bx-make').disabled = false; $('bx-make').textContent = 'Make the box'; $('bx-err').textContent = r.reason || 'Failed'; return; }
+  toast('Linux box ready');
+  lxRefresh(true);
+}
+async function bxResize(change) {
+  const r = await api('/api/agi-loop/box/resize', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(change)});
+  if (!r.ok) { $('bx-err').textContent = r.reason || 'Failed'; return; }
+  toast('Box updated');
+  lxRefresh(true);
+}
+async function bxDelete() {
+  if (!confirm('Delete this loop\'s Linux box and everything on its disk? This can\'t be undone.')) return;
+  const r = await api('/api/agi-loop/box', {method: 'DELETE'});
+  if (!r.ok) { $('bx-err').textContent = r.reason || 'Failed'; return; }
+  toast('Box deleted');
+  lxRefresh(true);
+}
+
 async function lxRefresh(force) {
+  if (!BX.owner && (force || Date.now() - LX.stats > 15000)) {
+    const has = await bxLoad();
+    const awake = has && BX.data.box.state === 'started';
+    document.querySelector('#panel-linux .lx-strip').style.display = awake ? '' : 'none';
+    if (!awake) {
+      LX.stats = Date.now();
+      $('lx-off').style.display = 'none';
+      $('lx-pane-files').style.display = 'none'; $('lx-pane-terminal').style.display = 'none';
+      return;
+    }
+  }
   if (force || Date.now() - LX.stats > 15000) {
     LX.stats = Date.now();
     const s = await api('/api/agi-loop/linux/stats');
@@ -1522,7 +1624,9 @@ function dzShow() {
     $('dz-facts').innerHTML = [['Loop', i.id], ['Agent', i.agent], ['State', i.running ? 'Running — it will be stopped first' : 'Stopped'],
       ['Data', `${i.files} file${i.files === 1 ? '' : 's'} · ${dzSize(i.bytes)} (journal, beliefs, workbench)`]]
       .map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('');
-    $('dz-untouched').textContent = `Not touched either way: the agent ${i.agent} itself, the group chat history, and its Linux machine (/home/${i.linux_user}).`;
+    $('dz-untouched').textContent = BX.owner
+      ? `Not touched either way: the agent ${i.agent} itself, the group chat history, and its Linux machine (/home/${i.linux_user}).`
+      : `Not touched either way: the agent ${i.agent} itself and the group chat history. If the loop has a Linux box, the box and its disk are deleted with it.`;
   }
   if (DZ.step === 2) {
     $('dz-name').textContent = DZ.id;

@@ -48,11 +48,31 @@ def linux_user(loop_id: str) -> str:
     return "".join(c for c in (loop_id or "") if c.isalnum()).lower()
 
 
+# A user's box (userbox.py): the same tool, without the owner's world in its description.
+USER_BOX_DEFINITION = {
+    "name": "linux",
+    "description": (
+        "Your own Linux machine (Ubuntu 24.04, you are 'agent' with sudo). Runs one bash command and returns "
+        "its exit code and output. /home/agent is your persistent disk — build there; ask your owner to grow it "
+        "from the Linux tab if it fills up. Outbound internet works (apt, pip, git, curl). Each call is a fresh "
+        "shell: chain with && or pass cwd. Long-running things belong in tmux or nohup, not in one call. "
+        "Your owner can follow every command you run and your file tree from the Linux tab. Keep a README.md "
+        "in every project folder you make and list your projects in ~/README.md. The machine runs while you're "
+        "awake and stops when you sleep, and it costs your owner credits while it runs. "
+        "~/hud/ holds your HUD, written every tick by a root process you don't own (now.json, now.txt, log.jsonl)."
+    ),
+    "parameters": DEFINITION["parameters"],
+}
+
+
 class Linux:
-    def __init__(self, url: str, token: str, user: str = "supervisor"):
+    def __init__(self, url: str, token: str, user: str = "supervisor", headers: Optional[dict] = None,
+                 hud_url: Optional[str] = None):
         self.url = url.rstrip("/")
         self.token = token
         self.user = user
+        self.headers = dict(headers or {})     # a user's box: fly-force-instance-id routes to its machine
+        self._hud_url = hud_url
 
     @classmethod
     def from_env(cls, loop_id: str = "supervisor") -> Optional["Linux"]:
@@ -66,6 +86,8 @@ class Linux:
         return cls(url, token, user) if url and token else None
 
     def definition(self) -> dict:
+        if self.headers:
+            return USER_BOX_DEFINITION
         if self.user == "supervisor":
             return DEFINITION
         return {**DEFINITION, "description": DEFINITION["description"].replace("supervisor", self.user)}
@@ -74,19 +96,22 @@ class Linux:
         """Read-only views of the machine for the operator: log, tree, file, stats."""
         query = urllib.parse.urlencode({k: v for k, v in params.items() if v is not None})
         req = urllib.request.Request(f"{self.url}/{endpoint}" + (f"?{query}" if query else ""),
-                                     headers={"Authorization": f"Bearer {self.token}"})
+                                     headers={"Authorization": f"Bearer {self.token}", **self.headers})
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read())
 
     @property
     def hud_url(self) -> str:
         """The box's root-run HUD writer listens on :8081 beside the command server on :8080."""
+        if self._hud_url:
+            return self._hud_url
         return self.url[: -len(":8080")] + ":8081" if self.url.endswith(":8080") else self.url
 
     def push_hud(self, payload: dict) -> bool:
         """Write this tick's HUD into ~/hud/ on the machine. Best effort: a slow or down box never holds a tick."""
         req = urllib.request.Request(f"{self.hud_url}/hud", data=json.dumps(payload, default=str).encode(), method="POST",
-                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.token}"})
+                                     headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.token}",
+                                              **self.headers})
         try:
             with urllib.request.urlopen(req, timeout=5) as resp:
                 return resp.status == 200
@@ -100,7 +125,7 @@ class Linux:
         timeout = max(1, min(300, int(args.get("timeout_seconds") or 60)))
         body = json.dumps({"command": command, "cwd": args.get("cwd") or "", "timeout": timeout}).encode()
         req = urllib.request.Request(f"{self.url}/exec", data=body, method="POST", headers={
-            "Content-Type": "application/json", "Authorization": f"Bearer {self.token}"})
+            "Content-Type": "application/json", "Authorization": f"Bearer {self.token}", **self.headers})
         try:
             with urllib.request.urlopen(req, timeout=timeout + 15) as resp:
                 r = json.loads(resp.read())

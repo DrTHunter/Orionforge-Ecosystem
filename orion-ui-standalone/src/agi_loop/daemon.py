@@ -201,8 +201,8 @@ class LoopDaemon:
         self.workbench = Workbench(self.data_dir / "workbench") if config.workbench else None
         self.loop_id = loop_id
         self.group = group   # the shared room (groupchat.GroupChat), if this loop is in one
-        # A Linux machine is found by the loop's id; only the owner's loops may have one.
-        self.linux = Linux.from_env(loop_id) if linux else None
+        # The owner's loops find their machine by id (env); a user's loop is handed its own box, or none.
+        self.linux = linux if isinstance(linux, Linux) else (Linux.from_env(loop_id) if linux else None)
         self.channels = list(DEFAULT_CHANNELS)
         self.tools = LoopTools(self)
 

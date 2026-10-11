@@ -1,0 +1,29 @@
+# A signed-in user's Linux box: the same Ubuntu machine and command server as the owner's minds'
+# boxes, for one loop of one user. Machines are created on demand by the engine through the Fly
+# Machines API (orion-ui-standalone/src/agi_loop/userbox.py) in the app 'orionforge-user-boxes',
+# which lives on its own private network: these boxes can't reach the engine, the owner's boxes,
+# or each other. The engine reaches each box over HTTPS with that box's own SHELL_TOKEN.
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        sudo ca-certificates curl wget git nano vim less tmux htop jq ripgrep unzip zip sqlite3 \
+        build-essential python3 python3-pip python3-venv nodejs npm iproute2 iputils-ping dnsutils \
+    && rm -rf /var/lib/apt/lists/*
+
+ARG AGENT_USER=agent
+ENV AGENT_USER=${AGENT_USER}
+# No web terminal on a user's box: that's the owner's window into their own minds' machines.
+ENV NO_TTYD=1
+
+RUN userdel -r ubuntu 2>/dev/null || true \
+    && useradd -m -u 1000 -s /bin/bash ${AGENT_USER} \
+    && echo "${AGENT_USER} ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/${AGENT_USER} && chmod 440 /etc/sudoers.d/${AGENT_USER}
+
+COPY shell_server.py start.sh /opt/elysia/
+COPY userbox-README.md /opt/elysia/README.md
+RUN chmod +x /opt/elysia/start.sh
+
+ENV PYTHONUNBUFFERED=1
+EXPOSE 8080 8081
+CMD ["/opt/elysia/start.sh"]

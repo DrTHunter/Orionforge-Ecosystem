@@ -21,7 +21,10 @@ find "$HOME_DIR" \( -path "$HOME_DIR/library" -o -path "$HOME_DIR/hud" \) -prune
 HUD_ONLY=1 PORT=8081 HOME="$HOME_DIR" python3 /opt/agent/shell_server.py &
 
 # Web terminal for the operator — no public IP, reach it with `fly proxy 7681 -a agent-linux`.
-runuser -u "$AGENT_USER" -- env -u SHELL_TOKEN HOME="$HOME_DIR" ttyd -W -p 7681 -w "$HOME_DIR" bash -l &
+# Users' boxes (Dockerfile.userbox) set NO_TTYD: no terminal on them.
+if [ -z "$NO_TTYD" ]; then
+    runuser -u "$AGENT_USER" -- env -u SHELL_TOKEN HOME="$HOME_DIR" ttyd -W -p 7681 -w "$HOME_DIR" bash -l &
+fi
 
 # SHELL_TOKEN is inherited from the environment, never put on the command line (ps would show it).
 exec runuser -u "$AGENT_USER" -- env -u HUD_ONLY HOME="$HOME_DIR" PORT=8080 python3 /opt/agent/shell_server.py

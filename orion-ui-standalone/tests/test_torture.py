@@ -12696,7 +12696,7 @@ def test_agi_loop_per_user():
                 check("new user: loop-only routes say there's no loop", r.status_code == 404)
                 r = await c.get("/agi-loop")
                 check("new user: the page opens", r.status_code == 200)
-                check("new user: no Linux tab", 'data-tab="linux"' not in r.text)
+                check("new user: a Linux tab to get a box from", 'data-tab="linux"' in r.text and 'id="bx-card"' in r.text)
                 check("new user: the wizard says what it costs", "paid from your credits" in r.text)
                 for name in ("atlas", "nova", "ember"):
                     r = await c.post("/api/agi-loop/loops", json={"id": name, "config": {"agent": "aristotle"}})
@@ -12704,7 +12704,7 @@ def test_agi_loop_per_user():
                 r = await c.post("/api/agi-loop/loops", json={"id": "fourth", "config": {"agent": "aristotle"}})
                 check("a fourth loop is refused", r.status_code == 400 and "up to 3" in r.json().get("reason", ""))
                 r = await c.get("/api/agi-loop/linux/log?loop=atlas")
-                check("a user's loop has no Linux machine", r.status_code == 403)
+                check("a user's loop has no Linux machine until they make one", r.status_code == 404)
                 d = _app._loop_daemon(loop="atlas")
                 check("…not even by env var", d.linux is None)
                 d.running = True
@@ -12922,6 +12922,187 @@ def test_load_optimizations():
     check("favicon: small", fav.stat().st_size < 64 * 1024, fav.stat().st_size)
 
 
+
+# ═════════════════════════════════════════════
+# USERS' LINUX BOXES — one paid Fly machine per user loop
+# ═════════════════════════════════════════════
+def test_user_linux_boxes():
+    print("\n=== TORTURE: Users' Linux boxes ===")
+    import asyncio
+    import web.app as _app
+    import src.agi_loop as al
+    import src.agi_loop.userbox as ub
+    import src.request_context as rc
+    tmp = Path(tempfile.mkdtemp())
+    calls = []
+    machines = {}
+
+    def fake_api(method, path, body=None, timeout=60):
+        calls.append((method, path, body))
+        if method == "POST" and path.endswith("/volumes"):
+            return {"id": f"vol_{len(calls)}"}
+        if method == "POST" and path.endswith("/machines"):
+            mid = f"m{len(calls)}"
+            machines[mid] = "stopped" if body.get("skip_launch") else "started"
+            return {"id": mid}
+        if method == "GET" and "/machines/" in path:
+            return {"state": machines.get(path.rsplit("/", 1)[1], "destroyed")}
+        if path.endswith("/start"):
+            machines[path.split("/")[-2]] = "started"
+        if path.endswith("/stop"):
+            machines[path.split("/")[-2]] = "stopped"
+        return {}
+
+    # ── the box itself
+    try:
+        box = ub.Box.create(tmp / "d", "alice-atlas", 512, 1, start=False, api=fake_api)
+        vol, mach = calls[0], calls[1]
+        cfg = mach[2]["config"]
+        check("box: a disk, then a machine", vol[0] == "POST" and vol[1].endswith("/volumes") and vol[2]["size_gb"] == 1)
+        check("box: in the users' app", ub.APP in mach[1] and cfg["image"] == ub.IMAGE)
+        check("box: the size they picked", cfg["guest"] == {"cpu_kind": "shared", "cpus": 1, "memory_mb": 512})
+        check("box: its disk is the home", cfg["mounts"] == [{"volume": vol and calls[0] and box.r["volume_id"], "path": "/home/agent"}])
+        check("box: its own secret key", len(cfg["env"]["SHELL_TOKEN"]) >= 40 and cfg["env"]["SHELL_TOKEN"] == box.r["token"])
+        check("box: the engine starts and stops it, not Fly", all(sv["autostart"] is False and sv["autostop"] == "off"
+                                                                  for sv in cfg["services"]))
+        check("box: no web terminal exposed", {sv["internal_port"] for sv in cfg["services"]} == {8080, 8081})
+        check("box: made asleep when the loop is", mach[2]["skip_launch"] is True and box.r["state"] == "stopped")
+        lx = box.linux()
+        check("box: requests go to its machine", lx.headers == {"fly-force-instance-id": box.machine_id}
+              and lx.url == ub.public_url() and lx.hud_url == ub.public_url() + ":8443")
+        check("box: a generic tool description", "'agent'" in lx.definition()["description"]
+              and "Trent" not in lx.definition()["description"] and "library" not in lx.definition()["description"])
+        check("box: remembered with the loop", ub.Box.load(tmp / "d").machine_id == box.machine_id)
+        for bad_mem, bad_disk in ((256, 1), (512, 0), (512, 51)):
+            try:
+                ub.Box.create(tmp / "x", "x", bad_mem, bad_disk, start=False, api=fake_api)
+                check(f"box: refuses {bad_mem} MB / {bad_disk} GB", False)
+            except ValueError:
+                check(f"box: refuses {bad_mem} MB / {bad_disk} GB", True)
+
+        # ── billing: twice Fly's price, nothing rounded up between meters
+        t0 = box.r["run_metered_at"]
+        due = box.meter(now=t0 + 3600, running=True)
+        expect = 0.00000143 * 3600 * 2 * 1000 + 1 * 0.15 / 30 / 24 * 2 * 1000
+        check("billing: an hour at 512 MB, at 2x", due == int(expect) and abs(box.r["owed"] - (expect - int(expect))) < 1e-6,
+              (due, box.r["owed"], expect))
+        due = box.meter(now=t0 + 3600 + 86400, running=False)
+        check("billing: asleep, only the disk (10 credits a GB-day)", due == 10 or due == 11, due)
+        tiny = [box.meter(now=t0 + 90000 + i * 60, running=False) for i in range(1, 6)]
+        check("billing: tiny amounts wait instead of rounding up", sum(tiny) == 0)
+        check("prices: shown before making one", ub.prices()["memory"][512] == round(ub.credits_per_hour(512), 1)
+              and ub.prices()["roomy_disk_gb"] == 5 and ub.prices()["default_disk_gb"] == 1)
+
+        box.grow_disk(3, api=fake_api)
+        check("disk: grows", calls[-1][0] == "PUT" and calls[-1][1].endswith("/extend") and box.r["disk_gb"] == 3)
+        try:
+            box.grow_disk(2, api=fake_api)
+            check("disk: never shrinks", False)
+        except ValueError:
+            check("disk: never shrinks", True)
+        box.resize(1024, api=fake_api)
+        check("memory: changes", calls[-1][2]["config"]["guest"]["memory_mb"] == 1024 and box.r["memory_mb"] == 1024)
+        box.destroy(api=fake_api)
+        check("delete: machine and disk, and forgotten", [c[0] for c in calls[-2:]] == ["DELETE", "DELETE"]
+              and ub.Box.load(tmp / "d") is None)
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # ── through the app, as a user
+    tmp = Path(tempfile.mkdtemp())
+    orig = (al.CONFIG_FILE, al.DATA_DIR, al.USERS_DIR, rc._DATA_DIR, _app.get_auth_config,
+            ub._api, _app.get_user_credits, _app.deduct_user_credits)
+    al.CONFIG_FILE = tmp / "config" / "agi_loop.json"
+    al.DATA_DIR = tmp / "data" / "orion" / "agi_loop"
+    al.USERS_DIR = tmp / "data" / "users"
+    rc._DATA_DIR = tmp / "data"
+    al.CONFIG_FILE.parent.mkdir(parents=True)
+    al._daemons.clear()
+    _app._group_chats.clear()
+    _app.get_auth_config = lambda: {"auth_enabled": False}
+    ub._api = fake_api
+    wallet = {"alice": 1000}
+    charged = []
+    _app.get_user_credits = lambda uid: wallet.get(uid, 0)
+    _app.deduct_user_credits = lambda uid, n, note: (charged.append((uid, n, note)), wallet.__setitem__(uid, wallet[uid] - n))
+    os.environ["FLY_USER_BOXES_TOKEN"] = "test"
+    from httpx import ASGITransport, AsyncClient
+
+    def as_alice(fn):
+        tok = rc.data_scope.set("alice")
+        try:
+            return asyncio.run(fn())
+        finally:
+            rc.data_scope.reset(tok)
+
+    try:
+        async def flow():
+            async with AsyncClient(transport=ASGITransport(app=_app.app), base_url="http://test") as c:
+                await c.post("/api/agi-loop/loops", json={"id": "atlas", "config": {"agent": "aristotle"}})
+                r = await c.get("/api/agi-loop/box?loop=atlas")
+                check("app: prices before a box", r.json().get("box") is None and r.json().get("enabled") is True)
+                r = await c.post("/api/agi-loop/box/create?loop=atlas", json={"memory_mb": 512, "disk_gb": 1})
+                check("app: a box is made", r.status_code == 200 and r.json()["box"]["memory_mb"] == 512)
+                d = _app._loop_daemon(loop="atlas")
+                check("app: the loop gets the linux tool at once", d.linux is not None and "linux" in d.tools.handlers)
+                r = await c.post("/api/agi-loop/box/create?loop=atlas", json={})
+                check("app: one box per loop", r.status_code == 409)
+                r = await c.get("/api/agi-loop/linux/tree?loop=atlas")
+                check("app: asleep with the loop, so no peeking", r.status_code == 409 and r.json().get("asleep"))
+                await c.post("/api/agi-loop/start?loop=atlas")
+                box = _app._box("atlas")
+                check("app: the box wakes with the loop", box.r["state"] == "started"
+                      and any(p.endswith(f"/machines/{box.machine_id}/start") for _, p, _ in calls))
+                box.r["run_metered_at"] -= 7200       # pretend it ran two hours
+                box.save()
+                n_before = len(charged)
+                await c.post("/api/agi-loop/stop?loop=atlas")
+                box = _app._box("atlas")
+                check("app: and sleeps with it, charged for the time", box.r["state"] == "stopped"
+                      and len(charged) > n_before and charged[-1][0] == "alice" and charged[-1][1] >= 20)
+                r = await c.request("DELETE", "/api/agi-loop/loops/atlas", json={"confirm": "atlas", "mode": "purge"})
+                check("app: deleting the loop deletes its box and disk", r.status_code == 200
+                      and _app._box("atlas") is None
+                      and sum(1 for m, p, _ in calls if m == "DELETE") >= 2)
+        as_alice(flow)
+
+        async def owner():
+            async with AsyncClient(transport=ASGITransport(app=_app.app), base_url="http://test") as c:
+                r = await c.post("/api/agi-loop/box/create?loop=elysia", json={})
+                check("app: the owner's loops keep their own machines", r.status_code == 400)
+        tok = rc.data_scope.set(None)
+        try:
+            asyncio.run(owner())
+        finally:
+            rc.data_scope.reset(tok)
+
+        # ── the meter: charges, and stops what nobody is using
+        async def meter_once():
+            async with AsyncClient(transport=ASGITransport(app=_app.app), base_url="http://test") as c:
+                await c.post("/api/agi-loop/loops", json={"id": "nova", "config": {"agent": "aristotle"}})
+                await c.post("/api/agi-loop/box/create?loop=nova", json={})
+            box = _app._box("nova")
+            await asyncio.to_thread(box.start, fake_api)       # running, but its loop is asleep
+            box.r["run_metered_at"] -= 3600
+            box.save()
+            saved_sleep, _app._BOX_METER_EVERY = _app._BOX_METER_EVERY, 0
+            task = asyncio.create_task(_app._meter_boxes())
+            await asyncio.sleep(0.3)
+            task.cancel()
+            _app._BOX_METER_EVERY = saved_sleep
+            box = _app._box("nova")
+            check("meter: charges a box's running time", any(n >= 10 for _, n, _ in charged[-3:]))
+            check("meter: stops a box whose loop is asleep", machines[box.machine_id] == "stopped")
+        as_alice(meter_once)
+    finally:
+        os.environ.pop("FLY_USER_BOXES_TOKEN", None)
+        al._daemons.clear()
+        _app._group_chats.clear()
+        (al.CONFIG_FILE, al.DATA_DIR, al.USERS_DIR, rc._DATA_DIR, _app.get_auth_config,
+         ub._api, _app.get_user_credits, _app.deduct_user_credits) = orig
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 if __name__ == "__main__":
     test_boundary_policy()
     test_pii_guard_extended()
@@ -12985,6 +13166,7 @@ if __name__ == "__main__":
     test_upload_thumbnails()
     test_agi_loop_per_user()
     test_load_optimizations()
+    test_user_linux_boxes()
     test_settings_helpers()
     test_vault_search_min_score()
     test_tag_sort_mode()

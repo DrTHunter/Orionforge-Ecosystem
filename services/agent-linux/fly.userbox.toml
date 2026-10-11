@@ -1,0 +1,11 @@
+# Image builds for users' Linux boxes. The app has no fixed machines: the engine creates one
+# machine + volume per user loop through the Machines API (src/agi_loop/userbox.py).
+# Created on its own network so the boxes are cut off from the rest of the organization:
+#   fly apps create orionforge-user-boxes --network orionforge-user-boxes
+# Build and push a new image (the engine reads the label from USER_BOX_IMAGE):
+#   fly deploy -c fly.userbox.toml --build-only --push --image-label userbox-v1
+app = 'orionforge-user-boxes'
+primary_region = 'iad'
+
+[build]
+  dockerfile = 'Dockerfile.userbox'

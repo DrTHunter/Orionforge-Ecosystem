@@ -288,6 +288,7 @@ async def _lifespan_body():
     asyncio.create_task(_autostart_loops(faiss_ready))
     asyncio.create_task(_watch_loops())
     asyncio.create_task(_warm_thumbs())
+    asyncio.create_task(_meter_boxes())
     # Auto-purge inactive accounts (>90 days)
     try:
         result = purge_inactive_users()
@@ -3717,6 +3718,7 @@ from src.agi_loop import (
     set_daemon as _set_loop_daemon,
 )
 from src.agi_loop.daemon import Completion as _LoopCompletion
+from src.agi_loop import userbox as _userbox
 from src.agi_loop.linux import linux_user as _loop_linux_user
 from src.agi_loop.embedding import SentenceEmbedder as _LoopEmbedder
 
@@ -3741,6 +3743,10 @@ class _OrionLoopHost:
         if d is not None and d.running:
             d.event("credits", "out of credits — the loop went to sleep")
             d.request_stop("out of credits")
+        try:   # its Linux box sleeps too, now rather than at the next meter
+            asyncio.get_running_loop().create_task(_box_sleep(self.loop_id))
+        except RuntimeError:
+            pass
 
     def prepare(self, agent: str, view: str):
         # dynamic_last: the system message stays byte-stable tick to tick (cacheable); this tick's
@@ -3975,11 +3981,109 @@ def _loop_daemon(fresh: bool = False, loop: str = _DEFAULT_LOOP) -> LoopDaemon:
     d = _get_loop_daemon(loop)
     if d is None or (fresh and not d.running):
         owner = _loop_owner()
+        if owner is None:
+            linux = True                      # the owner's loops: their fixed machines, by env
+        else:
+            box = _userbox.Box.load(_loop_data_dir(loop))
+            linux = box.linux() if box else False
         d = LoopDaemon(_OrionLoopHost(loop, owner), _load_loop_config(loop), _loop_data_dir(loop),
-                       embedder=_loop_embedder, loop_id=loop, group=_group_chat_for(),
-                       linux=owner is None)   # Linux machines are the owner's only
+                       embedder=_loop_embedder, loop_id=loop, group=_group_chat_for(), linux=linux)
         _set_loop_daemon(d, loop)
     return d
+
+
+# ── Users' Linux boxes (src/agi_loop/userbox.py) ──
+# A user's loop can have one paid machine. It runs while the loop is awake; the meter below
+# charges its running time and disk every few minutes and stops boxes nobody is using.
+_BOX_METER_EVERY = 300
+
+
+def _box(lid: str):
+    """The current user's box for ``lid`` (None for the owner, who has fixed machines)."""
+    if _loop_owner() is None or not lid or lid not in _loop_ids():
+        return None
+    return _userbox.Box.load(_loop_data_dir(lid))
+
+
+def _attach_box(d, box):
+    """Give a live loop its box (or take it away) without rebuilding it."""
+    d.linux = box.linux() if box else None
+    if d.linux:
+        d.tools.handlers["linux"] = (d.linux.definition(), d.linux.execute)
+    else:
+        d.tools.handlers.pop("linux", None)
+
+
+def _charge_box(box, uid: str, running=None) -> bool:
+    """Charge what the box has cost since its last meter. False when the user can't cover it."""
+    due = box.meter(running=running)
+    if due <= 0:
+        return True
+    balance = get_user_credits(uid)
+    take = min(due, balance)
+    if take > 0:
+        deduct_user_credits(uid, take, f"linux_box:{box.r.get('memory_mb')}mb:{box.r.get('disk_gb')}gb")
+    return balance >= due
+
+
+async def _box_wake(lid: str):
+    box = _box(lid)
+    if box and box.r.get("state") != "started":
+        try:
+            box.meter(running=False)          # the disk up to now; running time starts from here
+            await asyncio.to_thread(box.start)
+        except Exception as exc:
+            log.warning("[userbox] couldn't start %s: %s", lid, exc)
+
+
+async def _box_sleep(lid: str):
+    box = _box(lid)
+    if box and box.r.get("state") == "started":
+        try:
+            _charge_box(box, _loop_owner(), running=True)
+            await asyncio.to_thread(box.stop)
+        except Exception as exc:
+            log.warning("[userbox] couldn't stop %s: %s", lid, exc)
+
+
+def _box_actual_state(box) -> str:
+    try:
+        m = _userbox._api("GET", f"/apps/{_userbox.APP}/machines/{box.machine_id}", timeout=20)
+        return "started" if m.get("state") in ("started", "starting", "replacing") else "stopped"
+    except Exception:
+        return box.r.get("state", "stopped")
+
+
+async def _meter_boxes():
+    """Every few minutes: charge each user's box for what it cost, and stop the ones whose loop
+    is asleep or whose owner is out of credits."""
+    while True:
+        await asyncio.sleep(_BOX_METER_EVERY)
+        if not _userbox.enabled():
+            continue
+        for scope in _loop_scopes():
+            tok = _data_scope.set(scope)
+            try:
+                for lid in _loop_ids():
+                    box = _box(lid)
+                    if not box:
+                        continue
+                    actual = await asyncio.to_thread(_box_actual_state, box)
+                    paid = _charge_box(box, scope, running=actual == "started")
+                    box.r["state"] = actual
+                    box.save()
+                    d = _get_loop_daemon(lid)
+                    awake = d is not None and d.running
+                    if not paid and awake:
+                        d.event("credits", "out of credits — the loop and its Linux box went to sleep")
+                        d.request_stop("out of credits")
+                        awake = False
+                    if actual == "started" and not awake:
+                        await asyncio.to_thread(box.stop)
+            except Exception as exc:
+                log.warning("[userbox] meter pass for %s failed: %s", scope[:8], exc)
+            finally:
+                _data_scope.reset(tok)
 
 
 def _prepare_message(text: str, files: list, daemons: list, label: str) -> str:
@@ -4026,6 +4130,8 @@ async def _autostart_loops(ready=None):
                         continue
                     d = _loop_daemon(True, lid)
                     if not d.running:
+                        if scope:
+                            await _box_wake(lid)
                         d.start()
                         log.info("[agi_loop] %s came back after a restart", lid if not scope else f"{scope[:8]}/{lid}")
                 except Exception as exc:
@@ -4157,6 +4263,7 @@ async def api_agi_loop_start(request: Request):
     d = _loop_daemon(True, _lid(request))
     if d.running:
         return JSONResponse({"ok": False, "reason": "Already running"}, 409)
+    await _box_wake(_lid(request))
     d.start()
     return JSONResponse({"ok": True, "message": f"{d.config.agent} is awake"})
 
@@ -4256,6 +4363,13 @@ async def api_agi_loop_delete(loop_id: str, request: Request):
                 d.task.cancel()
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await d.task
+    box = _box(loop_id)
+    if box is not None:
+        try:
+            _charge_box(box, _loop_owner(), running=box.r.get("state") == "started")
+            await asyncio.to_thread(box.destroy)
+        except Exception as exc:
+            return JSONResponse({"ok": False, "reason": f"Couldn't delete its Linux box: {exc}"}, 502)
     try:
         dest = await asyncio.to_thread(_delete_loop, loop_id, mode == "archive")
     except ValueError as exc:
@@ -4332,6 +4446,7 @@ async def api_agi_loop_control(action: str, request: Request):
         if not d.running:
             return JSONResponse({"ok": False, "reason": "Not running"}, 409)
         d.stop("operator")
+        await _box_sleep(_lid(request))
     elif action == "pause":
         if not d.running:
             return JSONResponse({"ok": False, "reason": "Not running"}, 409)
@@ -4474,17 +4589,103 @@ async def api_agi_loop_workbench_file(request: Request, path: str = Query(...)):
 
 # Read-only views of the agent's Linux machine (services/agent-linux) for the Linux tab.
 # The operator can watch; only the agent's linux tool runs commands.
+@app.get("/api/agi-loop/box")
+async def api_agi_loop_box(request: Request):
+    """A user's loop's Linux box: what it is and costs, or the prices for making one."""
+    if denied := _agi_denied(request):
+        return denied
+    box = _box(_lid(request))
+    return JSONResponse({"enabled": _userbox.enabled(), "owner": _loop_owner() is None,
+                         "prices": _userbox.prices(), "box": box.summary() if box else None})
+
+
+@app.post("/api/agi-loop/box/create")   # two segments: POST /api/agi-loop/{action} would catch "box"
+async def api_agi_loop_box_create(request: Request):
+    """Give the user's loop its own Linux box: ``memory_mb`` (512/1024/2048) and ``disk_gb``."""
+    if denied := _agi_denied(request):
+        return denied
+    if _loop_owner() is None:
+        return JSONResponse({"ok": False, "reason": "Your loops have their own machines"}, 400)
+    if not _userbox.enabled():
+        return JSONResponse({"ok": False, "reason": "Linux boxes aren't switched on yet"}, 503)
+    lid = _lid(request)
+    if _box(lid):
+        return JSONResponse({"ok": False, "reason": "This loop already has a box"}, 409)
+    if get_user_credits(_loop_owner()) <= 0:
+        return JSONResponse({"ok": False, "reason": "Add credits in the Store first", "redirect": "/store"}, 402)
+    body = await request.json()
+    body = body if isinstance(body, dict) else {}
+    d = _loop_daemon(loop=lid)
+    try:
+        box = await asyncio.to_thread(
+            _userbox.Box.create, _loop_data_dir(lid), f"{_loop_owner()[:8]}-{lid}",
+            int(body.get("memory_mb") or _userbox.DEFAULT_MEMORY), int(body.get("disk_gb") or _userbox.DEFAULT_DISK_GB),
+            d.running)
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, 400)
+    except Exception as exc:
+        log.warning("[userbox] create failed for %s: %s", lid, exc)
+        return JSONResponse({"ok": False, "reason": f"Couldn't make the box: {exc}"}, 502)
+    _attach_box(d, box)
+    return JSONResponse({"ok": True, "box": box.summary()})
+
+
+@app.post("/api/agi-loop/box/resize")
+async def api_agi_loop_box_resize(request: Request):
+    """Change the box's memory (a restart) or grow its disk (live; disks only grow)."""
+    if denied := _agi_denied(request):
+        return denied
+    lid = _lid(request)
+    box = _box(lid)
+    if box is None:
+        return JSONResponse({"ok": False, "reason": "This loop has no box"}, 404)
+    body = await request.json()
+    body = body if isinstance(body, dict) else {}
+    try:
+        _charge_box(box, _loop_owner())             # the old size up to now
+        if body.get("memory_mb") and int(body["memory_mb"]) != box.r["memory_mb"]:
+            await asyncio.to_thread(box.resize, int(body["memory_mb"]))
+        if body.get("disk_gb") and int(body["disk_gb"]) != box.r["disk_gb"]:
+            await asyncio.to_thread(box.grow_disk, int(body["disk_gb"]))
+    except ValueError as exc:
+        return JSONResponse({"ok": False, "reason": str(exc)}, 400)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "reason": f"Fly couldn't do it: {exc}"}, 502)
+    _attach_box(_loop_daemon(loop=lid), box)
+    return JSONResponse({"ok": True, "box": box.summary()})
+
+
+@app.delete("/api/agi-loop/box")
+async def api_agi_loop_box_delete(request: Request):
+    """Delete the loop's box and its disk for good."""
+    if denied := _agi_denied(request):
+        return denied
+    lid = _lid(request)
+    box = _box(lid)
+    if box is None:
+        return JSONResponse({"ok": False, "reason": "This loop has no box"}, 404)
+    try:
+        _charge_box(box, _loop_owner(), running=box.r.get("state") == "started")
+        await asyncio.to_thread(box.destroy)
+    except Exception as exc:
+        return JSONResponse({"ok": False, "reason": f"Couldn't delete it: {exc}"}, 502)
+    _attach_box(_loop_daemon(loop=lid), None)
+    return JSONResponse({"ok": True})
+
+
 @app.get("/api/agi-loop/linux/{view}")
 async def api_agi_loop_linux(view: str, request: Request, lines: int = Query(300), path: str = Query("")):
     if denied := _agi_denied(request):
         return denied
-    if _loop_owner() is not None:
-        return JSONResponse({"error": "Linux machines aren't available for your loops yet"}, status_code=403)
     if view not in ("log", "tree", "file", "stats"):
         return JSONResponse({"ok": False, "reason": "Unknown view"}, 404)
     linux = _loop_daemon(loop=_lid(request)).linux
     if not linux:
         return JSONResponse({"ok": False, "enabled": False, "reason": "No Linux machine is configured"}, 404)
+    box = _box(_lid(request))
+    if box is not None and box.r.get("state") != "started":
+        return JSONResponse({"ok": False, "enabled": True, "asleep": True,
+                             "reason": "The box sleeps while its loop does. Wake the loop to look inside."}, 409)
     params = {"lines": lines} if view == "log" else {"path": path} if view == "file" else {}
     try:
         data = await asyncio.to_thread(linux.read, view, **params)
